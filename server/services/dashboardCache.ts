@@ -7,8 +7,8 @@ interface CachedStats {
 
 class DashboardCacheService {
   private cache: LRUCache<string, CachedStats>;
-  private readonly CACHE_TTL = 30000; // 30 seconds
-  private readonly MAX_CACHE_SIZE = 50; // Maximum number of cached items
+  private readonly CACHE_TTL = 300000; // 5 minutes - increased to reduce database load
+  private readonly MAX_CACHE_SIZE = 20; // Reduced cache size for memory optimization
 
   constructor() {
     this.cache = new LRUCache<string, CachedStats>({

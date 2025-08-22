@@ -20,21 +20,31 @@ export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   connectionTimeoutMillis: 10000,  // 10 second timeout
   idleTimeoutMillis: 30000,        // 30 second idle timeout  
-  max: 5,                          // Optimized for low memory environment
+  max: 3,                          // Reduced to 3 connections for memory optimization
   maxUses: 10000,                  // High reuse to minimize connection overhead
-  allowExitOnIdle: true            // Allow graceful shutdown
+  allowExitOnIdle: true,           // Allow graceful shutdown
+  // Additional optimizations
+  statement_timeout: 30000,         // 30 second statement timeout
+  query_timeout: 30000,             // 30 second query timeout
+  connectionString: process.env.DATABASE_URL + '?sslmode=require&poolSize=3'
 });
+
+// Singleton pattern to prevent multiple pool instances
+let poolInitialized = false;
 
 // Add error handling for the pool
-pool.on('error', (err) => {
-  console.error('Database pool error:', err);
-});
+if (!poolInitialized) {
+  pool.on('error', (err) => {
+    console.error('Database pool error:', err);
+  });
 
-pool.on('connect', () => {
-  console.log('Database pool connected');
-});
-
-// Test connection on module load
-console.log('Database module loaded, testing basic connection...');
+  // Only log the first connection
+  pool.once('connect', () => {
+    console.log('Database pool connected');
+  });
+  
+  poolInitialized = true;
+  console.log('Database module loaded, testing basic connection...');
+}
 
 export const db = drizzle({ client: pool, schema });

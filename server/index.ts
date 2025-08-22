@@ -6,6 +6,8 @@ import { mastercardApi } from "./services/mastercardApi";
 import { getMastercardWorker } from "./services/mastercardWorker";
 import memoryMonitor from './utils/memoryMonitor';
 import { optimizeDatabase, scheduleCleanup } from './utils/performanceOptimizer';
+import { memoryManager } from './utils/memoryManager';
+import { performFullOptimization, setupAutoOptimization } from './utils/performOptimization';
 import { batchEnrichmentMonitor } from './services/batchEnrichmentMonitor';
 
 const app = express();
@@ -100,9 +102,18 @@ app.use((req, res, next) => {
       
       // Initialize performance optimizations
       try {
-        // Start memory monitoring
+        // Start memory monitoring with new memory manager
         memoryMonitor.start(30000); // Check every 30 seconds
         console.log('✅ Memory monitoring started');
+        
+        // Force initial memory cleanup
+        memoryManager.forceCleanup().catch(console.error);
+        
+        // Run comprehensive optimization
+        performFullOptimization().catch(console.error);
+        
+        // Setup auto-optimization for critical memory situations
+        setupAutoOptimization();
         
         // Optimize database connections
         optimizeDatabase();
