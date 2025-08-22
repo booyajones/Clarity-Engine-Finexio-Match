@@ -9,6 +9,7 @@ import { optimizeDatabase, scheduleCleanup } from './utils/performanceOptimizer'
 import { memoryManager } from './utils/memoryManager';
 import { performFullOptimization, setupAutoOptimization } from './utils/performOptimization';
 import { batchEnrichmentMonitor } from './services/batchEnrichmentMonitor';
+import { emergencyCleanup, startAutoCleanup } from './services/globalCacheCleanup';
 
 const app = express();
 // Security and optimization middleware
@@ -103,11 +104,19 @@ app.use((req, res, next) => {
       // Initialize performance optimizations
       try {
         // Start memory monitoring with new memory manager
-        memoryMonitor.start(30000); // Check every 30 seconds
+        memoryMonitor.start(20000); // Check every 20 seconds (more aggressive)
         console.log('✅ Memory monitoring started');
         
-        // Force initial memory cleanup
-        memoryManager.forceCleanup().catch(console.error);
+        // Start aggressive auto cleanup
+        startAutoCleanup(15000); // Every 15 seconds
+        console.log('✅ Auto cleanup started');
+        
+        // Force initial memory cleanup after 3 seconds
+        setTimeout(() => {
+          console.log('🔧 Running startup memory optimization...');
+          emergencyCleanup();
+          memoryManager.forceCleanup().catch(console.error);
+        }, 3000);
         
         // Run comprehensive optimization
         performFullOptimization().catch(console.error);
