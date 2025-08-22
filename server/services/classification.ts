@@ -461,21 +461,21 @@ Provide your best classification for every payee. Give realistic confidence leve
     const totalRecords = payeeData.length;
     const duplicateDetector = new AdvancedDuplicateDetector();
     
-    // Aggressive performance settings for $800/month budget (likely Tier 3+)
+    // Conservative settings for memory safety
     let BATCH_SIZE, CONCURRENT_LIMIT;
     
     if (totalRecords > 10000) {
-      // Large datasets: Aggressive parallel processing
-      BATCH_SIZE = 200; // Process 200 at a time
-      CONCURRENT_LIMIT = 50; // 50 parallel API calls
+      // Large datasets: Conservative to prevent OOM
+      BATCH_SIZE = 50; // Reduced from 200
+      CONCURRENT_LIMIT = 15; // Reduced from 50
     } else if (totalRecords > 1000) {
-      // Medium datasets: Still aggressive
-      BATCH_SIZE = 150;
-      CONCURRENT_LIMIT = 30;
+      // Medium datasets: Balanced approach
+      BATCH_SIZE = 30; // Reduced from 150
+      CONCURRENT_LIMIT = 10; // Reduced from 30
     } else {
-      // Small datasets: Maximum speed
-      BATCH_SIZE = 100;
-      CONCURRENT_LIMIT = 20;
+      // Small datasets: Conservative
+      BATCH_SIZE = 20; // Reduced from 100
+      CONCURRENT_LIMIT = 5; // Reduced from 20
     }
     
     const PROGRESS_UPDATE_INTERVAL = 50; // Update less frequently to reduce DB writes

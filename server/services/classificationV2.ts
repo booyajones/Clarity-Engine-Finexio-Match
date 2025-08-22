@@ -88,8 +88,28 @@ export class OptimizedClassificationService {
     const stats = fs.statSync(filePath);
     console.log(`File stats: size=${stats.size} bytes`);
     
-    // Read first few lines to debug
-    const firstLines = fs.readFileSync(filePath, 'utf8').split('\n').slice(0, 3);
+    // Stream read first few lines to debug (memory optimization)
+    const reader = fs.createReadStream(filePath, { encoding: 'utf8', highWaterMark: 4096 });
+    let buffer = '';
+    let linesRead = 0;
+    const firstLines: string[] = [];
+    
+    for await (const chunk of reader) {
+      buffer += chunk;
+      const lines = buffer.split('\n');
+      
+      while (lines.length > 1 && linesRead < 3) {
+        firstLines.push(lines.shift()!);
+        linesRead++;
+      }
+      
+      if (linesRead >= 3) {
+        reader.destroy();
+        break;
+      }
+      buffer = lines[0]; // Keep the incomplete line
+    }
+    
     console.log(`First 3 lines of file:`, firstLines);
     
     const abortController = new AbortController();
@@ -320,26 +340,47 @@ export class OptimizedClassificationService {
   }
   
   private async convertExcelToCsv(excelFilePath: string): Promise<string> {
-    console.log(`📊 Converting Excel file to CSV: ${excelFilePath}`);
+    console.log(`📊 Converting Excel file to CSV (streaming): ${excelFilePath}`);
     
     try {
       const workbook = XLSX.readFile(excelFilePath);
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       
-      console.log(`📊 Converting sheet "${sheetName}" to CSV`);
+      console.log(`📊 Streaming sheet "${sheetName}" to CSV`);
       
-      // Convert to CSV format
-      const csvData = XLSX.utils.sheet_to_csv(worksheet);
-      
-      // Write to temporary CSV file
+      // Stream to CSV file instead of building giant string in memory
       const csvFilePath = excelFilePath + '.csv';
-      fs.writeFileSync(csvFilePath, csvData);
+      const writeStream = fs.createWriteStream(csvFilePath);
       
-      console.log(`📊 Excel converted to CSV: ${csvFilePath}`);
+      // Get the range of the worksheet
+      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1:A1');
+      
+      // Stream row by row to avoid memory spike
+      for (let row = range.s.r; row <= range.e.r; row++) {
+        const rowData = [];
+        for (let col = range.s.c; col <= range.e.c; col++) {
+          const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+          const cell = worksheet[cellAddress];
+          rowData.push(cell ? String(cell.v || '') : '');
+        }
+        writeStream.write(rowData.join(',') + '\n');
+        
+        // Allow event loop to breathe every 100 rows
+        if (row % 100 === 0) {
+          await new Promise(resolve => setImmediate(resolve));
+        }
+      }
+      
+      await new Promise((resolve, reject) => {
+        writeStream.end(() => resolve(undefined));
+        writeStream.on('error', reject);
+      });
+      
+      console.log(`📊 Excel streamed to CSV: ${csvFilePath}`);
       return csvFilePath;
     } catch (err) {
-      console.error(`📊 Excel to CSV conversion error:`, err);
+      console.error(`📊 Excel to CSV streaming error:`, err);
       throw err;
     }
   }

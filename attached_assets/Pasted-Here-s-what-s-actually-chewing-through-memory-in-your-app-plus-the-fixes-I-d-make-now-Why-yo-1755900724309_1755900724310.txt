@@ -1,0 +1,165 @@
+Here’s what’s actually chewing through memory in your app, plus the fixes I’d make now.
+
+## Why you keep hitting memory walls
+
+1. **Response body logging is serializing whole payloads.**
+   Your middleware wraps `res.json` and always does `JSON.stringify(capturedJsonResponse)` before trimming the log line. The huge object still gets stringified in memory.&#x20;
+
+2. **Excel handling builds giant in-memory strings.**
+   `XLSX.utils.sheet_to_csv(worksheet)` returns one big string, then you write it to disk. For large worksheets that’s a full copy in JS heap.&#x20;
+
+3. **Excel “preview” loads entire sheets, not just headers.**
+   For uploads you call `XLSX.utils.sheet_to_json(..., { header: 1 })` on the whole sheet to get headers and preview rows, which loads every row into memory. You only need the first \~10. &#x20;
+
+4. **Debug helper reads whole files into RAM.**
+   `fs.readFileSync(filePath, 'utf8')` to grab the “first 3 lines” reads the entire file into memory first. For 50–200 MB CSVs that’s a real spike.&#x20;
+
+5. **Batch stats pull entire result sets.**
+   After classification you compute accuracy by fetching *all* classifications for the batch and reducing in Node. Big batches, big arrays.&#x20;
+
+6. **Unbounded global cache for Mastercard results.**
+   Module-level `global.mastercardResults` is a plain object with no TTL or size cap. That can only grow.&#x20;
+
+7. **Aggressive constants encourage large in-flight working sets.**
+   `BATCH_SIZE = 1000` and `MAX_CONCURRENT = 500` are declared near CSV processing. Even if you don’t fully hit that concurrency, the intent is to buffer big chunks.&#x20;
+
+8. **Monitoring exists, but remediation is reactive.**
+   You’ve got a `memoryMonitor` and optimizers, but they kick in *after* heap crosses thresholds instead of preventing allocations in the hotspots above. &#x20;
+
+---
+
+## Fixes I’d ship today
+
+### 1) Stop logging full JSON responses
+
+Only log status, path, duration, and maybe payload size. Remove the stringify. Example patch for `server/index.ts`:
+
+```ts
+// remove capturedJsonResponse entirely
+res.on("finish", () => {
+  const duration = Date.now() - start;
+  if (path.startsWith("/api")) {
+    log(`${req.method} ${path} ${res.statusCode} in ${duration}ms`);
+  }
+});
+```
+
+This avoids `JSON.stringify` on large responses.&#x20;
+
+### 2) Stream Excel to CSV instead of building a giant string
+
+Swap to SheetJS streaming:
+
+```ts
+// before: const csvData = XLSX.utils.sheet_to_csv(worksheet); fs.writeFileSync(csvFilePath, csvData);
+const wstream = fs.createWriteStream(csvFilePath);
+await new Promise((resolve, reject) => {
+  XLSX.stream.to_csv(worksheet).pipe(wstream).on('finish', resolve).on('error', reject);
+});
+```
+
+This keeps the heap flat while converting. Apply in `convertExcelToCsv`.&#x20;
+
+### 3) Only read the first N rows for Excel previews
+
+Use a range instead of materializing the whole sheet:
+
+```ts
+// just headers:
+const headerRow = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 0 /* first row only */ }) as string[][];
+const headers = headerRow[0] || [];
+
+// for preview rows 1..10:
+const sample = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: { s: { r: 1, c: 0 }, e: { r: 10, c: headers.length-1 } } }) as string[][];
+```
+
+This fixes the preview endpoints. &#x20;
+
+### 4) Don’t `readFileSync` big uploads
+
+Replace “first 3 lines” debug with a tiny streamed read:
+
+```ts
+const reader = fs.createReadStream(filePath, { encoding: 'utf8', highWaterMark: 4096 });
+let buf = ''; 
+for await (const chunk of reader) {
+  buf += chunk; 
+  const lines = buf.split('\n');
+  if (lines.length >= 3) { console.log('First 3 lines:', lines.slice(0,3)); break; }
+}
+reader.destroy();
+```
+
+Apply in `processFileStream`.&#x20;
+
+### 5) Compute accuracy in SQL, not in Node
+
+One line query, zero arrays in JS:
+
+```ts
+// replace: fetch all classifications then reduce
+const [{ avg }] = await db.execute(sql`SELECT AVG(confidence)::float AS avg FROM payee_classifications WHERE batch_id = ${batchId}`);
+await storage.updateUploadBatch(batchId, { accuracy: avg ?? 0 });
+```
+
+This replaces the Node reduce block.&#x20;
+
+### 6) Put Mastercard results behind a bounded LRU with TTL
+
+You already have a cache helper. Use it:
+
+```ts
+// at startup
+import { createOptimizedCache, registerCache } from '../utils/memoryOptimizer';
+export const mastercardResults = createOptimizedCache<any>('mastercardResults', 2 * 1024 * 1024); // 2MB
+registerCache('mastercardResults', mastercardResults);
+
+// usage
+mastercardResults.set(key, { timestamp: Date.now(), status, data }, { ttl: 1000 * 60 * 30 });
+```
+
+This prevents unlimited growth of `global.mastercardResults`. &#x20;
+
+### 7) Right-size batch and concurrency, and adapt to memory
+
+Dial down the defaults and adapt to heap pressure reported by your monitor:
+
+```ts
+// safer defaults
+const BATCH_SIZE = 250;
+const MAX_CONCURRENT = 16;
+
+// pseudo-adaptive adjustment
+const mem = memoryMonitor.getStats();
+if (mem && mem.heapUsedPercent > 70) { /* lower batch/concurrency */ }
+```
+
+Change where these are declared near CSV processing. &#x20;
+
+---
+
+## Guardrails that keep you stable
+
+* **Start with constrained heap and GC exposed in prod.** You already documented `NODE_OPTIONS="--expose-gc --max-old-space-size=512"` and a production start script. Use it consistently. &#x20;
+
+* **Let the batch monitor run one batch at a time.** You’ve implemented `MAX_CONCURRENT_BATCHES = 1` and a `processingBatch` flag. Keep it that way unless you see headroom.&#x20;
+
+* **Expose and use the monitoring endpoints during runs.** `/api/monitoring/memory`, `/api/monitoring/performance`, `/api/monitoring/gc` are ready. Wire them into your dashboards or deploy hooks. &#x20;
+
+---
+
+## If you want to go a step further
+
+* **Stream XLSX → CSV with chunked DB writes.** You’re already saving classifications in 500-row chunks, which is good. Keep write batches small and consistent.&#x20;
+
+* **Avoid accumulating big arrays of payees.** You buffer until `BATCH_SIZE` then process. With the new smaller batch size, that buffer’s footprint drops immediately.&#x20;
+
+* **Cap cache sizes everywhere.** You’ve got `createOptimizedCache` and a global caches registry. Ensure every cache register call uses a small maxSize and TTL.&#x20;
+
+* **Remove large fields from logs.** Besides responses, watch request bodies on upload and any routes returning classification arrays.
+
+---
+
+### Bottom line
+
+Most OOMs are self-inflicted by “nice to have” convenience code, not the core pipeline. Kill the full-payload logging, stream Excel instead of materializing it, stop reading whole files for tiny debug prints, compute stats in SQL, and bound that global results cache. Those five changes will cut peak heap by a wide margin and make the rest of your monitoring tools actually preventative instead of reactive.

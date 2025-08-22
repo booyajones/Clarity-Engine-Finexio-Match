@@ -313,8 +313,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const workbook = XLSX.readFile(filePath);
           const sheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[sheetName];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as string[][];
-          headers = jsonData[0] || [];
+          // Only read first row for headers (memory optimization)
+          const headerRow = XLSX.utils.sheet_to_json(worksheet, { 
+            header: 1, 
+            range: 0 // First row only
+          }) as string[][];
+          headers = headerRow[0] || [];
           console.log(`Excel headers extracted:`, headers);
         } catch (xlsxError) {
           console.error("XLSX processing error:", xlsxError);
@@ -351,10 +355,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const workbook = XLSX.readFile(filePath);
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as string[][];
+        // Only read first 11 rows for preview (memory optimization)
+        const previewData = XLSX.utils.sheet_to_json(worksheet, { 
+          header: 1,
+          range: { s: { r: 0, c: 0 }, e: { r: 10, c: 50 } } // First 11 rows, max 50 cols
+        }) as string[][];
         
         // Convert to sample data format for prediction
-        sampleData = jsonData.slice(1, 11); // Skip header row, take next 10
+        sampleData = previewData.slice(1, 11); // Skip header row, take next 10
         
         // Convert rows to objects using headers for preview
         preview = jsonData.slice(1, 6).map(row => {
