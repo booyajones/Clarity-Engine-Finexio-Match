@@ -109,14 +109,9 @@ export class MemoryManager {
     
     // Additional critical measures
     if (level === 'critical') {
-      // Clear module cache for non-essential modules
-      const nonEssentialPatterns = ['/services/cache', '/utils/logger'];
-      Object.keys(require.cache).forEach(key => {
-        if (nonEssentialPatterns.some(pattern => key.includes(pattern))) {
-          delete require.cache[key];
-        }
-      });
-      console.log('🔥 Cleared non-essential module cache');
+      // In ES modules, we can't clear module cache like in CommonJS
+      // Instead, we'll focus on other cleanup strategies
+      console.log('🔥 Running critical cleanup measures');
     }
     
     // Log new memory state

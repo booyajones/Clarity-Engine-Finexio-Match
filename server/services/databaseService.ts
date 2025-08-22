@@ -17,15 +17,8 @@ const queryCache = new LRUCache<string, { data: any; timestamp: number }>({
   }
 });
 
-// Register with memory manager if available
-if (typeof memoryManager !== 'undefined') {
-  try {
-    const { memoryManager } = require('../utils/memoryManager');
-    memoryManager.registerCache(queryCache);
-  } catch (e) {
-    // Memory manager not available
-  }
-}
+// Note: Memory manager registration happens in the manager itself
+// to avoid circular dependencies in ES modules
 
 export class DatabaseService {
   private static instance: DatabaseService;

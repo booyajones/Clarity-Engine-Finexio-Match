@@ -17,7 +17,7 @@ if (!process.env.DATABASE_URL) {
 }
 
 export const pool = new Pool({ 
-  connectionString: process.env.DATABASE_URL,
+  connectionString: process.env.DATABASE_URL + '?sslmode=require',
   connectionTimeoutMillis: 10000,  // 10 second timeout
   idleTimeoutMillis: 30000,        // 30 second idle timeout  
   max: 3,                          // Reduced to 3 connections for memory optimization
@@ -25,8 +25,7 @@ export const pool = new Pool({
   allowExitOnIdle: true,           // Allow graceful shutdown
   // Additional optimizations
   statement_timeout: 30000,         // 30 second statement timeout
-  query_timeout: 30000,             // 30 second query timeout
-  connectionString: process.env.DATABASE_URL + '?sslmode=require&poolSize=3'
+  query_timeout: 30000              // 30 second query timeout
 });
 
 // Singleton pattern to prevent multiple pool instances
