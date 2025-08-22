@@ -1,0 +1,253 @@
+Alright, let’s be surgical. I tried to re-open your repo from our connected index and the internal search tool errored, so I’m going to give you drop-in patches that remove the biggest heap spikes and keep the working set tiny. You can copy these straight into the codebase.
+
+# 1) Stop logging response bodies
+
+Cloning big JSON just to trim it is a heap killer. Log metadata only.
+
+```diff
+--- a/server/index.ts
++++ b/server/index.ts
+@@
+-// wraps res.json and stringifies the whole payload
+-const origJson = res.json.bind(res);
+-res.json = (body: any) => {
+-  capturedJsonResponse = body;
+-  return origJson(body);
+-};
+-res.on("finish", () => {
+-  const duration = Date.now() - start;
+-  logger.info({ path: req.path, status: res.statusCode, duration, body: JSON.stringify(capturedJsonResponse).slice(0, 80) });
+-});
++res.on("finish", () => {
++  const duration = Date.now() - start;
++  const size = Number(res.getHeader("Content-Length")) || 0;
++  logger.info({ path: req.path, status: res.statusCode, duration, size });
++});
+```
+
+# 2) Stream Excel to the pipeline, no giant strings
+
+Replace any `XLSX.utils.sheet_to_csv(worksheet)` usage. Either use SheetJS stream or ExcelJS streaming. Here’s SheetJS, since you already have it:
+
+```ts
+// lib/ingest/createExcelCsvStream.ts
+import fs from "fs";
+import * as XLSX from "xlsx";
+
+export async function writeCsvStreaming(xlsxPath: string, csvPath: string) {
+  const wb = XLSX.readFile(xlsxPath, { dense: true });
+  const wsName = wb.SheetNames[0];
+  const ws = wb.Sheets[wsName];
+  const out = fs.createWriteStream(csvPath);
+  await new Promise<void>((resolve, reject) => {
+    XLSX.stream.to_csv(ws, { FS: ",", RS: "\n" })
+      .pipe(out)
+      .on("finish", () => resolve())
+      .on("error", reject);
+  });
+}
+```
+
+Then feed that file into your existing CSV parser with `stream.pipeline`. No intermediate big string, no `readFileSync` “peek”.
+
+# 3) Excel preview without loading the sheet
+
+Read only the header row and the first 10 data rows.
+
+```ts
+// lib/ingest/excelPreview.ts
+import * as XLSX from "xlsx";
+
+export function getPreview(xlsxPath: string) {
+  const wb = XLSX.readFile(xlsxPath, { dense: true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const header = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, range: 0 })[0] || [];
+  const sample = XLSX.utils.sheet_to_json<string[]>(
+    ws,
+    { header: 1, range: { s: { r: 1, c: 0 }, e: { r: 10, c: header.length - 1 } } }
+  );
+  return { header, sample };
+}
+```
+
+# 4) Replace “peek first N lines” debug
+
+Never `readFileSync` huge files.
+
+```ts
+// utils/peekFile.ts
+import fs from "fs";
+
+export async function peekLines(path: string, n = 3) {
+  const rs = fs.createReadStream(path, { encoding: "utf8", highWaterMark: 4096 });
+  let buf = "";
+  for await (const chunk of rs) {
+    buf += chunk;
+    const lines = buf.split(/\r?\n/);
+    if (lines.length > n) return lines.slice(0, n);
+  }
+  return buf.length ? buf.split(/\r?\n/).slice(0, n) : [];
+}
+```
+
+# 5) One limiter for everything, with backpressure
+
+Keep the working set small and stable. This pattern handles 10k, 50k, 100k just fine on modest RAM.
+
+```ts
+// lib/pipeline/runCsv.ts
+import { pipeline } from "stream/promises";
+import fs from "fs";
+import csv from "csv-parser";
+import pLimit from "p-limit";
+
+const DEFAULT_BATCH = 250;
+const DEFAULT_CONCURRENCY = 16;
+
+function memPressure() {
+  const { rss, heapUsed } = process.memoryUsage();
+  const rssMb = rss / 1048576;
+  const heapMb = heapUsed / 1048576;
+  return { rssMb, heapMb };
+}
+
+export async function runCsv(csvPath: string, handleRow: (r:any)=>Promise<void>) {
+  let buf:any[] = [];
+  let BATCH = DEFAULT_BATCH;
+  let limit = pLimit(DEFAULT_CONCURRENCY);
+
+  async function flush() {
+    const batch = buf; buf = [];
+    await Promise.all(batch.map(r => limit(() => handleRow(r))));
+    const { rssMb } = memPressure();
+    if (rssMb > 600) {           // tune threshold to your plan
+      BATCH = Math.max(100, Math.floor(BATCH * 0.5));
+      limit = pLimit(Math.max(4, Math.floor(limit.concurrency / 2)));
+    } else if (rssMb < 400 && BATCH < 500) {
+      BATCH = Math.min(500, Math.floor(BATCH * 1.25));
+      limit = pLimit(Math.min(32, limit.concurrency + 2));
+    }
+  }
+
+  await pipeline(
+    fs.createReadStream(csvPath, { highWaterMark: 64 * 1024 }),
+    csv(),
+    async function *(source) {
+      for await (const row of source) {
+        buf.push(row);
+        if (buf.length >= BATCH) await flush();
+        yield null;
+      }
+      if (buf.length) await flush();
+    }
+  );
+}
+```
+
+Hook your classification and enrichment calls inside `handleRow`. This keeps peak heap flat because you never hold more than one small batch plus in-flight rows.
+
+# 6) Bulk insert rows, not one-by-one
+
+Use multi-row INSERTs of 250–500 values per statement. Example with pg:
+
+```ts
+// db/bulkInsert.ts
+import { Pool } from "pg";
+export async function bulkInsertClassifications(pg: Pool, rows: any[]) {
+  if (!rows.length) return;
+  const cols = ["batch_id","vendor_name","class","confidence","original_json"];
+  const values:string[] = [];
+  const params:any[] = [];
+  rows.forEach((r, i) => {
+    const base = i * cols.length;
+    values.push(`($${base+1}, $${base+2}, $${base+3}, $${base+4}, $${base+5})`);
+    params.push(r.batch_id, r.vendor_name, r.class, r.confidence, r.original_json);
+  });
+  await pg.query(`INSERT INTO payee_classifications (${cols.join(",")}) VALUES ${values.join(",")}`, params);
+}
+```
+
+Call this from your flush step and drop the batch array immediately after.
+
+# 7) Compute progress and accuracy in SQL
+
+No giant arrays in Node for totals.
+
+```ts
+// db/metrics.ts
+export async function getBatchMetrics(pg, batchId:number) {
+  const { rows } = await pg.query(`
+    SELECT COUNT(*) FILTER (WHERE needs_review) as needs_review,
+           COUNT(*) as total,
+           COALESCE(AVG(confidence), 0)::float as accuracy
+    FROM payee_classifications WHERE batch_id = $1
+  `, [batchId]);
+  return rows[0];
+}
+```
+
+# 8) Bound every cache by bytes and TTL
+
+If you keep any “results” cache, cap it hard.
+
+```ts
+// utils/caches.ts
+import LRU from "lru-cache";
+
+export const resultsCache = new LRU<string, any>({
+  maxSize: 2 * 1024 * 1024,         // 2 MB budget
+  sizeCalculation: (v, k) => Buffer.byteLength(k) + Buffer.byteLength(JSON.stringify(v)),
+  ttl: 30 * 60 * 1000,
+});
+```
+
+# 9) Abortable jobs with TTL
+
+Long polls and retries can leak memory. Give jobs a budget and a hard stop.
+
+```ts
+// jobs/runner.ts
+export async function runJob(doWork: (signal:AbortSignal)=>Promise<void>, msBudget = 6*60*60*1000) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort("time budget exceeded"), msBudget);
+  try { await doWork(ac.signal); } finally { clearTimeout(timer); }
+}
+```
+
+Propagate `signal` into every external call.
+
+# 10) Start flags and a safety sweep
+
+Use a fixed heap that matches your plan and expose GC so your watchdog can help.
+
+```json
+// package.json
+{
+  "scripts": {
+    "dev": "NODE_OPTIONS=\"--max-old-space-size=1024 --expose-gc\" tsx watch server/index.ts",
+    "start": "NODE_OPTIONS=\"--max-old-space-size=1024 --expose-gc\" node dist/server/index.js"
+  }
+}
+```
+
+Then add two quick checks:
+
+```ts
+// safety/guards.ts
+process.on("uncaughtException", e => { console.error("uncaught", e); process.exit(1); });
+process.on("unhandledRejection", e => { console.error("unhandled", e); });
+```
+
+---
+
+## What this buys you
+
+* No full-payload logging.
+* No workbook-to-string conversion.
+* Uploads and parsing are fully streaming.
+* Batches are small and adaptive.
+* Inserts are bulked.
+* Caches cannot run away.
+* Jobs end on their own.
+
+If you want, tell me your current memory ceiling in MB and I’ll tune the adaptive thresholds in #5 and batch sizes in #6 so you get the best throughput without flirting with OOM.

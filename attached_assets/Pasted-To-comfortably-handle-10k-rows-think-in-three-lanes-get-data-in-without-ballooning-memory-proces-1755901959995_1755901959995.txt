@@ -1,0 +1,137 @@
+To comfortably handle 10k+ rows, think in three lanes: get data in without ballooning memory, process it with tight backpressure, and write it out in bulk with predictable I/O. Here’s the playbook I’d ship.
+
+## 1) Stream uploads end-to-end
+
+Don’t hold whole files in RAM, ever.
+
+* Accept uploads with a streaming parser (Busboy or Multer’s stream mode). Write to a temp file and never `readFileSync`.
+* If the user uploads Excel, stream Excel → CSV directly. No “convert to one giant string, then write.” Use a streaming reader (ExcelJS or SheetJS stream) and pipe rows into your pipeline.
+* Let big files process in the background. Immediately create a Batch and drop the user on a "Queued" detail page.
+
+## 2) Parse with backpressure, not big arrays
+
+Keep the working set tiny while still moving fast.
+
+* Use Node’s `pipeline()` and a CSV parser with a reasonable `highWaterMark` (32–64 KB). That keeps buffers small and steady.
+* Batch rows into 200–500 items, push that batch through classification, then immediately release it. No “collect the entire file, then process.”
+* Add an AbortSignal so a “Stop” button halts the pipeline cleanly.
+
+```ts
+import { pipeline } from 'stream/promises';
+import fs from 'fs';
+import csv from 'csv-parser';
+import pLimit from 'p-limit';
+
+const LIMIT = pLimit(16);      // global governor
+const BATCH = 250;             // small working set
+let buf:any[] = [];
+
+async function handleRow(row:any) {
+  // classify + enrich one row
+}
+
+async function flush() {
+  const batch = buf; buf = [];
+  await Promise.all(batch.map(r => LIMIT(() => handleRow(r))));
+}
+
+await pipeline(
+  fs.createReadStream(tmpCsvPath, { highWaterMark: 64 * 1024 }),
+  csv(),
+  async function *(source) {
+    for await (const row of source) {
+      buf.push(row);
+      if (buf.length >= BATCH) await flush();
+      yield null; // backpressure: wait for flushes before pulling more
+    }
+    if (buf.length) await flush();
+  }
+);
+```
+
+## 3) Adapt to memory automatically
+
+Make the app throttle itself when memory gets tight.
+
+* Sample RSS every 1–2 seconds. If RSS > 70% of limit, temporarily drop `LIMIT` to 4–8 and `BATCH` to 100 until you’re back under the line.
+* Expose current LIMIT/BATCH on the batch detail page so users see why progress slowed. Calm, not scary.
+
+## 4) Bulk insert like a grown-up
+
+Writing one row at a time is death by a thousand syscalls.
+
+* Use multi-row inserts (`INSERT ... VALUES (...), (...), ...`) of 250–500 rows per call with parameterized queries.
+* If your Postgres connection supports `COPY FROM STDIN`, use it for 10k+ rows. If not, multi-row inserts are fine.
+* Wrap each batch in a small transaction. Keep indexes you filter on, drop the ones you don’t use during ingest.
+
+## 5) Tight, query-friendly schema
+
+Read and write patterns should be cheap.
+
+* Indexes you’ll actually hit during the run: `(batch_id)`, `(batch_id, status)`, and a partial index on “needs\_review”.
+* Store the large original payload in a separate column you can avoid selecting on most screens. Load it only when the UI asks.
+* Avoid wide JSON for hot paths. Persist normalized columns you search or filter on.
+
+## 6) Make heavy calls coalesce and cache
+
+External enrichers and matchers are where big jobs stall.
+
+* Concurrency cap per integration. 5–10 is usually plenty and keeps you within vendor rate limits.
+* De-duplicate identical requests in flight with a simple in-memory “in-progress” map. Multiple rows needing the same lookup wait for the first result.
+* Put results behind a bounded LRU with TTL. Cap it in MB so the cache can’t run away.
+
+## 7) Compute aggregates in SQL, not JS
+
+Avoid pulling thousands of rows back into Node just to sum or average.
+
+* Accuracy, counts, statuses, progress: `AVG()`, `COUNT()`, `SUM()` in one query per batch.
+* All list/detail API responses must be paginated. Default page sizes of 50–100 rows max.
+
+## 8) Background jobs with clear TTLs
+
+Large batches should never ride a single request.
+
+* Create a Job row, move the pipeline to a worker, and ping status every 250–500 ms to the UI.
+* Give each job a max runtime and exponential backoff on retries. Expire stuck jobs visibly so you don’t leak work.
+
+## 9) Timeouts, budgets, and circuit breakers
+
+You’ll hit flaky services on big runs.
+
+* Per-request timeout for every external call. Add a budget per batch to prevent infinite retries.
+* Circuit-break noisy dependencies for a few minutes after repeated failures. Mark affected rows “skipped” with a clear reason, not “failed silently.”
+
+## 10) Ops that protect you
+
+Small config wins make big file runs boring.
+
+* Start Node with `--expose-gc` and a fixed heap size aligned to your plan. Your memory watchdog can trim optional caches and lower concurrency proactively.
+* Set HTTP server timeouts so uploads don’t hold a socket forever. Push work to the job runner as fast as possible.
+* Add `/metrics` for process RSS, event loop lag, queue depth, batches per minute, rows per second. That’s your early warning.
+
+## 11) UX choices that help scale
+
+Simple UI tweaks reduce server strain.
+
+* After upload, immediately navigate to the Batch page with “Validating…” and then “Queued.” Don’t keep the upload request open while you parse.
+* In Review, default to “Needs review” only, with server-side pagination and count chips. Infinite scrolling can wait.
+* Offer “Download issues CSV” and “Download results CSV” as static exports so users don’t hammer the API with giant table views.
+
+## 12) Load testing that mirrors reality
+
+Validate with one synthetic big file and a known budget.
+
+* Generate a 50k-row CSV locally. Run the pipeline with `autocannon` hitting your status endpoints.
+* Track: peak RSS, total time to complete, rows/sec, API p95 latency, error rates. Set pass/fail gates you’ll keep running on CI for big changes.
+
+---
+
+### If you want copy-paste bits right now
+
+* Use the `pipeline + p-limit` snippet above for backpressure.
+* Switch Excel to streaming and feed the CSV stage directly.
+* Multi-row inserts at 250–500 rows per statement.
+* SQL for accuracy and progress. No big arrays in Node.
+* Add a memory governor that dials concurrency down when RSS rises.
+
+Do these and 10k rows stops being “big.” It’s just Tuesday.

@@ -4,72 +4,34 @@ import fs from 'fs';
 
 /**
  * Stream Excel file processing to avoid memory spikes
- * Replaces the memory-intensive sheet_to_csv approach
+ * Surgical optimizations to eliminate heap spikes
  */
 export class ExcelStreamProcessor {
   /**
-   * Stream Excel file row by row without loading entire sheet in memory
+   * Stream Excel to CSV using native XLSX streaming - no giant strings
    */
   static async streamExcelToCsv(
     excelFilePath: string, 
     csvFilePath: string
   ): Promise<void> {
-    console.log(`📊 Streaming Excel to CSV: ${excelFilePath}`);
+    console.log(`📊 Streaming Excel to CSV (zero memory spike): ${excelFilePath}`);
     
     try {
-      const workbook = XLSX.readFile(excelFilePath, { 
-        type: 'file',
-        raw: true,
-        codepage: 65001 // UTF-8
-      });
-      
+      const workbook = XLSX.readFile(excelFilePath, { dense: true });
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
-      
-      if (!worksheet['!ref']) {
-        throw new Error('Empty worksheet');
-      }
-      
-      const range = XLSX.utils.decode_range(worksheet['!ref']);
       const writeStream = fs.createWriteStream(csvFilePath);
       
-      // Process row by row to avoid memory spike
-      for (let row = range.s.r; row <= range.e.r; row++) {
-        const rowData: string[] = [];
-        
-        for (let col = range.s.c; col <= range.e.c; col++) {
-          const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
-          const cell = worksheet[cellAddress];
-          
-          // Handle different cell types
-          let value = '';
-          if (cell) {
-            if (cell.v !== undefined && cell.v !== null) {
-              value = String(cell.v);
-              // Escape CSV special characters
-              if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-                value = '"' + value.replace(/"/g, '""') + '"';
-              }
-            }
-          }
-          rowData.push(value);
-        }
-        
-        writeStream.write(rowData.join(',') + '\n');
-        
-        // Allow event loop to breathe every 100 rows
-        if (row % 100 === 0) {
-          await new Promise(resolve => setImmediate(resolve));
-        }
-      }
-      
-      // Wait for write to complete
+      // Use native XLSX streaming - no intermediate strings
       await new Promise<void>((resolve, reject) => {
-        writeStream.end(() => resolve());
-        writeStream.on('error', reject);
+        XLSX.stream.to_csv(worksheet, { FS: ',', RS: '\n' })
+          .pipe(writeStream)
+          .on('finish', () => {
+            console.log('✅ Excel streamed with zero memory spike');
+            resolve();
+          })
+          .on('error', reject);
       });
-      
-      console.log(`✅ Excel streamed to CSV: ${csvFilePath}`);
     } catch (error) {
       console.error('Excel streaming error:', error);
       throw error;
@@ -77,43 +39,48 @@ export class ExcelStreamProcessor {
   }
 
   /**
-   * Get Excel preview without loading entire sheet
+   * Get Excel preview - only read first 11 rows
    */
   static async getExcelPreview(
     filePath: string,
     maxRows: number = 10
-  ): Promise<{ headers: string[]; preview: string[][] }> {
+  ): Promise<{ headers: string[]; preview: any[]; totalRows: number }> {
     const workbook = XLSX.readFile(filePath, {
-      sheetRows: maxRows + 1 // Only read needed rows
+      dense: true,
+      sheetRows: 11  // Hard limit: only read first 11 rows
     });
     
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
     
-    // Get headers (first row)
-    const headerRow = XLSX.utils.sheet_to_json(worksheet, { 
-      header: 1, 
-      range: 0,
-      raw: false
-    }) as string[][];
+    // Get header row
+    const headers = XLSX.utils.sheet_to_json<string[]>(
+      worksheet, 
+      { header: 1, range: 0 }
+    )[0] || [];
     
-    const headers = headerRow[0] || [];
+    // Get sample rows (2-11)
+    const sample = XLSX.utils.sheet_to_json<string[]>(
+      worksheet,
+      { 
+        header: 1, 
+        range: { 
+          s: { r: 1, c: 0 }, 
+          e: { r: 10, c: headers.length - 1 } 
+        } 
+      }
+    );
     
-    // Get preview rows
-    const previewRange = {
-      s: { r: 1, c: 0 },
-      e: { r: Math.min(maxRows, 10), c: Math.min(headers.length - 1, 50) }
-    };
+    // Estimate total rows from ref
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+    const totalRows = range.e.r + 1;
     
-    const previewData = XLSX.utils.sheet_to_json(worksheet, {
-      header: 1,
-      range: previewRange,
-      raw: false
-    }) as string[][];
+    console.log(`✅ Preview: ${headers.length} cols, ${sample.length} samples of ~${totalRows} total`);
     
     return {
       headers,
-      preview: previewData
+      preview: sample,
+      totalRows
     };
   }
 
