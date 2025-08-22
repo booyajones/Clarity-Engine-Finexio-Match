@@ -1,0 +1,204 @@
+Here’s how I’d keep pushing the app forward, beyond the memory fixes we already covered. I’m focusing on the biggest real-world wins first, with precise changes you can drop in today.
+
+---
+
+# 1) Remove hidden “payload cloning” in logs
+
+Right now every API response body gets JSON-stringified for logging. That allocates memory on the hot path. Log metadata only and gate body logging behind a tiny size cap.
+
+**Change in `server/index.ts`**
+Replace the in-place `JSON.stringify(capturedJsonResponse)` with a safe summary:
+
+```ts
+// ...inside the res.on("finish") handler
+if (capturedJsonResponse) {
+  // Avoid materializing huge payloads in memory
+  const size = Buffer.byteLength(
+    typeof capturedJsonResponse === 'string'
+      ? capturedJsonResponse
+      : JSON.stringify(capturedJsonResponse, (_, v) =>
+          Array.isArray(v) ? `[array(${v.length})]` : v
+        )
+  );
+
+  // Only log a tiny preview
+  if (size <= 2_000) {
+    logLine += ` :: ${JSON.stringify(capturedJsonResponse).slice(0, 1800)}`;
+  } else {
+    logLine += ` :: [body omitted, ${size} bytes]`;
+  }
+}
+```
+
+This avoids building big strings for large responses while keeping useful traces. The current code always stringifies the whole thing.&#x20;
+
+---
+
+# 2) Make Excel ingestion stream for real
+
+The service converts an entire Excel sheet to one giant CSV string, then writes it out. That spikes memory for big workbooks. Stream rows instead.
+
+**Why:** Excel → CSV via `XLSX.utils.sheet_to_csv` materializes a huge string. You also read whole files just to “peek” at the first three lines. Both hurt. &#x20;
+
+**Fix:** Use `exceljs`’s streaming reader, push rows directly into your existing CSV pipeline:
+
+```ts
+// new: createExcelStream.ts
+import { Readable } from 'stream';
+import * as ExcelJS from 'exceljs';
+export async function createExcelStream(filePath: string): Promise<Readable> {
+  const out = new Readable({ objectMode: true, read() {} });
+  const wb = new ExcelJS.stream.xlsx.WorkbookReader(filePath, { entries: 'emit', sharedStrings: 'cache' });
+  for await (const ws of wb) {
+    for await (const row of ws) {
+      const obj: Record<string, any> = {};
+      row.values.forEach((v: any, i: number) => { if (i) obj[`col${i}`] = v; });
+      out.push(obj);
+    }
+    break; // first sheet only
+  }
+  out.push(null);
+  return out;
+}
+```
+
+Then in `classificationV2`, call `createExcelStream(filePath)` instead of `convertExcelToCsv(...)+createCsvStream(...)`, and drop the “first 3 lines” debug read. &#x20;
+
+---
+
+# 3) Right-size batch and concurrency
+
+Your “Tier 5” batcher targets 1k records per batch and concurrency of 500. That’s going to oversubscribe memory, DB, and external APIs. Tune for throughput *and* stability.
+
+**Change in `classificationV2.ts`:**
+
+```ts
+// before
+const BATCH_SIZE = 1000;
+const MAX_CONCURRENT = 500;
+
+// after (start here for Replit/Neon)
+const BATCH_SIZE = 200;         // keeps per-batch objects small
+const MAX_CONCURRENT = 16;      // align with DB pool and API limits
+```
+
+Then gate all parallel steps through a single limiter (e.g. Bottleneck or p-limit) so “fast” paths don’t starve others. The current values are extremely aggressive.&#x20;
+
+---
+
+# 4) Kill “infinite” Mastercard polling
+
+The worker has no max retries or timeouts, which means it can poll forever and accumulate state/logs. Add a TTL, backoff, and an “abandon” state.
+
+**Current behavior:** it explicitly says “NO MAX RETRIES” and loops while `isRunning`, with “NO TIMEOUT LIMITS”. It even calls results with an effectively unlimited wait.    &#x20;
+
+**Patch sketch:**
+
+```ts
+const MAX_POLL_ATTEMPTS = 60 * 24;        // 24h @ 1-minute min cadence
+const MAX_RUNTIME_MS = 1000 * 60 * 60 * 6; // 6 hours hard cap
+const BASE_DELAY_MS = 30_000;
+
+private async poll() {
+  let attempts = 0;
+  const start = Date.now();
+  while (this.isRunning) {
+    if (attempts++ >= MAX_POLL_ATTEMPTS || Date.now() - start > MAX_RUNTIME_MS) {
+      console.warn('Mastercard worker TTL reached. Stopping.');
+      this.isRunning = false;
+      break;
+    }
+    await this.processPendingSearches().catch(console.error);
+    const backoff = Math.min(BASE_DELAY_MS * Math.ceil(attempts / 10), 5 * 60_000);
+    await new Promise(r => setTimeout(r, backoff));
+  }
+}
+```
+
+Mark stuck searches as `expired` and notify the UI so you don’t leak work.
+
+---
+
+# 5) Turn on Node’s GC hooks, or your memory tools can’t help you
+
+Your `memoryMonitor`/`memoryManager` call `global.gc()`. That only works if Node runs with `--expose-gc`. Add it to your start script or it’s a no-op.&#x20;
+
+**package.json (scripts):**
+
+```json
+{
+  "scripts": {
+    "dev": "NODE_OPTIONS=\"--max-old-space-size=1024 --expose-gc\" tsx watch server/index.ts",
+    "start": "NODE_OPTIONS=\"--max-old-space-size=1024 --expose-gc\" node dist/server/index.js"
+  }
+}
+```
+
+Tune the heap size to your plan, but keep it explicit.
+
+---
+
+# 6) Store less in memory while processing
+
+A few easy trims:
+
+* Drop the “sample first 3 rows/lines” debug logging in production to avoid building large strings and object previews. &#x20;
+* Only keep per-batch arrays as long as needed, then immediately `splice(0)` and let them go before the next await. You already flush on save, keep that pattern tight.&#x20;
+
+---
+
+# 7) Bound cache sizes and make eviction visible
+
+You already have LRU caches and a cleanup loop. Keep going:
+
+* Register all caches with the global cleaner and emit metrics for “purged” vs “stale” so you can see the effect. You have the cleanup utilities in place. &#x20;
+* Track approximate cache bytes using your existing `sizeCalculation` so you don’t exceed a budget. This is already wired.&#x20;
+
+---
+
+# 8) Tighten persistence paths
+
+* **Batch saves:** Your `SAVE_BATCH_SIZE` is 500, which is reasonable. Make sure inserts are multi-row and the table has the right indexes for readbacks. You already batch, keep it.&#x20;
+* **Original payloads:** You persist `originalData` per row. Consider storing a normalized subset plus a blob only when needed. That’s the largest per-row footprint and grows fast. See where `originalData` is copied into classifications.&#x20;
+
+---
+
+# 9) Add a single concurrency governor
+
+Different paths may compete: classification, Finexio matching, Google address validation, Mastercard, Akkio. Today those kick off in parallel once classification is done. Use one limiter instance across these to flatten spikes.
+
+Where they fan out: enrichment promises kick off after classification. Orchestration is sound, just add limits.&#x20;
+
+---
+
+# 10) Backpressure and cancellation
+
+* Respect `AbortSignal` everywhere you `await` external calls, not just in `processPayeeStream`. You already thread a signal; propagate it into downstream calls too.&#x20;
+* Surface a “Stop processing” button in the UI that calls your existing `abort` path per batch ID (you already keep `activeJobs`).&#x20;
+
+---
+
+# 11) Observability that protects memory
+
+* Export a `/metrics` route with process metrics and your cache gauges.
+* Keep request logging compact by default, add a query param like `?debug=1` to opt-in to verbose payloads for a single call. This prevents the “global stringify” problem noted above.&#x20;
+
+---
+
+# 12) Production posture
+
+* **HTTP timeouts:** Set a server-side timeout on API routes doing long work so you don’t keep sockets and buffers open.
+* **Job TTLs:** Persist job state early and often, then do the work asynchronously. The UI should poll job status, not hold a response open.
+* **Security:** Add auth to `/api` before exposing anything publicly. You clearly intend this to be an internal tool today.
+
+---
+
+## Quick checklist to ship this week
+
+1. Replace Excel conversion with streaming input, delete CSV temp step.&#x20;
+2. Lower `BATCH_SIZE` and `MAX_CONCURRENT`. Add a global limiter.&#x20;
+3. Clamp response logging, no full body stringify by default.&#x20;
+4. Add TTL/backoff to Mastercard worker and cap attempts. &#x20;
+5. Add `--expose-gc` to Node options so your memory tools actually run.&#x20;
+
+If you want, I can draft the exact diffs for 2–3 of these files next.

@@ -15,6 +15,7 @@ import { akkioService } from './akkioService';
 import { akkioModels } from "@shared/schema";
 import { eq, desc, and } from 'drizzle-orm';
 import { FuzzyMatcher } from './fuzzyMatcher';
+import { classificationIntelligence } from './classificationIntelligence';
 
 // Initialize OpenAI with conditional configuration
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ 
@@ -390,8 +391,8 @@ export class OptimizedClassificationService {
     stream: Readable,
     signal: AbortSignal
   ): Promise<void> {
-    const BATCH_SIZE = 250; // Reduced for memory safety
-    const MAX_CONCURRENT = 50; // Reduced for memory constraints
+    const BATCH_SIZE = 100; // Further reduced for memory safety
+    const MAX_CONCURRENT = 16; // Aligned with database pool
     let buffer: PayeeData[] = [];
     let totalProcessed = 0;
     let totalRecords = 0;

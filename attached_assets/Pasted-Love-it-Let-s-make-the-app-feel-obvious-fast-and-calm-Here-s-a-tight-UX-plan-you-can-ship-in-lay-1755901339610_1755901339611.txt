@@ -1,0 +1,194 @@
+Love it. Let’s make the app feel obvious, fast, and calm. Here’s a tight UX plan you can ship in layers without a redesign.
+
+# North Star
+
+One clean flow. Fewer decisions. Fast feedback.
+
+Upload → Map → Validate → Run → Review → Export.
+
+# A. Home screen that actually helps
+
+**Replace the current landing with a “Recent Batches” dashboard.**
+
+* Primary CTA: “Start new import”.
+* Cards for the last 5 batches with status, row count, accuracy, duration, and a single “Open” button.
+* Secondary actions hidden behind a kebab. Keep the screen quiet.
+
+**Card content**
+
+* Title: customer or filename.
+* Subtext: “12,487 rows • Classified 98% • 9m 10s”.
+* Status pill: Queued, Running, Needs review, Complete, Failed.
+
+# B. Upload that sets guardrails
+
+* Drag and drop zone with a single button: “Select file”.
+* Inline limits: max size, supported types, sample template download.
+* On drop, show an immediate “Validating…” line with a tiny spinner. No modal.
+* If it’s Excel, let the user pick the sheet in a simple list. Default to the first data-like sheet.
+
+**Microcopy**
+
+* Empty: “Drop a CSV or Excel file to begin.”
+* Validating: “Checking headers and rows…”
+* Error: “We couldn’t read that file. Try the sample template.”
+
+# C. Mapping that gets out of the way
+
+Auto-map with confidence scores. Only show the unmapped fields.
+
+* Left: required target fields with a clear checkmark when mapped.
+* Right: dropdown suggestions for each unmapped field. Show “Suggested: Vendor Name”.
+* One button: “Map remaining automatically”. Then “Continue”.
+
+**Rules**
+
+* Required fields always on top.
+* If everything maps, skip this step automatically and show a tiny toast: “All fields mapped”.
+
+# D. Validate, then go
+
+* Show the first ten validation issues inline with quick fixes.
+* Don’t dump a giant table. Offer a “Download issues CSV” and a “Proceed with X issues ignored” option.
+* One big button: “Run classification”. Small link: “Cancel”.
+
+# E. Running view that feels alive
+
+* Progress bar with three phases: Parse, Classify, Enrich. Each phase shows counts updating in real time.
+* A calm log with one line at a time, not a firehose.
+* Buttons: “Pause” and “Stop”. That’s it.
+* If paused or stopped, show a resume banner on the batch page.
+
+**Little details**
+
+* Estimate time once you’ve processed 1,000 rows. Display “\~4–6 minutes remaining”.
+* If memory pressure forces throttling, surface a subtle note: “Optimizing for stability. Processing slightly slower.”
+
+# F. Review screen that focuses attention
+
+* Default to “Only show rows that need review”.
+* Filters: confidence bucket, class, changed fields.
+* Bulk actions: accept all in view, export only accepted rows.
+* One primary CTA: “Finalize and export”.
+* Secondary: “Download everything as CSV”.
+
+# G. Empty states everywhere
+
+* No batches: “No imports yet. Start with a file.”
+* No issues: “Nothing to review. You’re done.”
+* Error: one clear line, one action to retry.
+
+# H. Feedback that doesn’t shout
+
+* Use toasts for success and small hints.
+* Use inline banners for blockers.
+* Never log raw payloads in the UI. Show counts, not blobs.
+
+# I. Keyboard and accessibility
+
+* Enter to continue. Esc to cancel dialogs. Space to pause/resume run.
+* Focus order matches the golden path.
+* Minimum 4.5:1 contrast. Focus ring always visible.
+
+# J. Visual system
+
+* Typography: Inter or system UI. H1 20–22, H2 18, body 14–16.
+* Spacing: 8-point scale. Cards get 16–20 padding.
+* Color: one brand color for CTAs, neutral grays everywhere else. Status pills use green, blue, amber, red. Keep it gentle.
+* Tables: zebra rows off by default. Only 1px dividers.
+
+# K. Copy deck you can paste
+
+* Primary CTAs: “Start new import”, “Continue”, “Run classification”, “Finalize and export”.
+* Status: “Queued”, “Running”, “Needs review”, “Complete”, “Failed”.
+* Hints:
+
+  * “We auto-mapped fields. You can adjust any before continuing.”
+  * “Showing only rows that need your review.”
+  * “Processing. You can leave this page and come back anytime.”
+
+# L. Small components you can drop in
+
+**Status pill**
+
+```tsx
+export function StatusPill({ status }: { status: "queued"|"running"|"review"|"done"|"failed" }) {
+  const map = {
+    queued: { label: "Queued", cls: "bg-slate-100 text-slate-700" },
+    running:{ label: "Running", cls: "bg-blue-100 text-blue-700" },
+    review: { label: "Needs review", cls: "bg-amber-100 text-amber-700" },
+    done:   { label: "Complete", cls: "bg-emerald-100 text-emerald-700" },
+    failed: { label: "Failed", cls: "bg-rose-100 text-rose-700" },
+  } as const;
+  const { label, cls } = map[status];
+  return <span className={`inline-flex items-center px-2 py-1 text-xs rounded-full ${cls}`}>{label}</span>;
+}
+```
+
+**Step header**
+
+```tsx
+export function StepHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="mb-4">
+      <h1 className="text-xl font-semibold">{title}</h1>
+      {subtitle && <p className="text-sm text-slate-600 mt-1">{subtitle}</p>}
+      <div className="h-0.5 bg-slate-200 mt-3" />
+    </div>
+  );
+}
+```
+
+**Progress bar with phases**
+
+```tsx
+export function PhasedProgress({ phases }: { phases: {name:string; done:number; total:number}[] }) {
+  const total = phases.reduce((a,p)=>a+p.total,0) || 1;
+  const done  = phases.reduce((a,p)=>a+p.done,0);
+  return (
+    <div>
+      <div className="w-full h-2 bg-slate-200 rounded">
+        <div className="h-2 bg-blue-600 rounded" style={{ width: `${(done/total)*100}%` }} />
+      </div>
+      <div className="flex gap-4 mt-2 text-xs text-slate-600">
+        {phases.map(p => <div key={p.name}>{p.name}: {p.done}/{p.total}</div>)}
+      </div>
+    </div>
+  );
+}
+```
+
+# M. Performance that feels like UX
+
+* **Skeletons** for batch cards and table rows so the UI never looks frozen.
+* **Stream counts** to the running view so numbers tick up.
+* **Debounce** noisy status updates to 250–500 ms, which looks smoother and reduces layout thrash.
+
+# N. Guardrails in the UI
+
+* If a file is too large, show a clear path: “We’ll process this in the background. You’ll get an email when it’s ready.” Then kick off the job and drop the user on the batch detail page with “Queued” status.
+* If classification pauses for memory safety, say it plainly and suggest next steps. No red banners unless something failed.
+
+# O. Ship plan
+
+**Day 1–2**
+
+* New Home with Recent Batches cards and the “Start new import” CTA.
+* Upload step with sheet picker and sample download.
+* Replace any modals with inline banners.
+
+**Day 3–4**
+
+* Mapping step with auto-map, unmapped list, and “map remaining” button.
+* Validate step with first-10 issues and “Proceed anyway”.
+
+**Day 5–6**
+
+* Running view: phased progress, pause/stop, calm log.
+* Review screen defaults to “Needs review”.
+
+**Day 7**
+
+* Polish empty states, toasts, shortcuts, and copy.
+
+If you want, I’ll turn this into a clickable Figma outline and a small React PR that adds the new dashboard, step header, status pill, and phased progress bar so your team can plug them into existing routes.
