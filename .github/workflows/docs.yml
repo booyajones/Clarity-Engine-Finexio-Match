@@ -1,0 +1,78 @@
+
+name: Update Documentation
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch: # Allow manual triggering
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-docs:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm install
+    
+    - name: Generate API documentation
+      run: |
+        echo "Generating updated documentation..."
+        # Create docs directory if it doesn't exist
+        mkdir -p docs
+        
+        # Generate basic API documentation
+        echo "# API Documentation" > docs/API_AUTO.md
+        echo "" >> docs/API_AUTO.md
+        echo "Last updated: $(date)" >> docs/API_AUTO.md
+        echo "" >> docs/API_AUTO.md
+        echo "## Available Endpoints" >> docs/API_AUTO.md
+        echo "- /api/health - Health check endpoint" >> docs/API_AUTO.md
+        echo "- /api/upload - File upload endpoint" >> docs/API_AUTO.md
+        echo "- /api/dashboard - Dashboard statistics" >> docs/API_AUTO.md
+        
+    - name: Update documentation timestamp
+      run: |
+        # Update timestamp file
+        echo "Documentation updated on $(date)" > docs/LAST_UPDATED.md
+    
+    - name: Check for changes
+      id: verify-changed-files
+      run: |
+        git add -A
+        if git diff --staged --quiet; then
+          echo "changed=false" >> $GITHUB_OUTPUT
+          echo "No documentation changes detected"
+        else
+          echo "changed=true" >> $GITHUB_OUTPUT
+          echo "Documentation changes detected"
+        fi
+    
+    - name: Commit documentation changes
+      if: steps.verify-changed-files.outputs.changed == 'true' && github.event_name == 'push'
+      run: |
+        git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git commit -m "docs: auto-update documentation [skip ci]"
+        git push
+    
+    - name: Skip commit (no changes)
+      if: steps.verify-changed-files.outputs.changed == 'false'
+      run: |
+        echo "No documentation changes to commit"
