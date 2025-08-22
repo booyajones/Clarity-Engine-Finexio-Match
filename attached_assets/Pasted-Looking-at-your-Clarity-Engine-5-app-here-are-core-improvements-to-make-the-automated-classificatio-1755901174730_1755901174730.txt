@@ -1,0 +1,87 @@
+Looking at your Clarity Engine 5 app, here are core improvements to make the automated classification engine much stronger:
+
+## 1. **Pre-Processing Intelligence**
+- **Normalize payee names before sending to GPT**: Strip suffixes, fix spacing, remove special characters. "Microsoft Corp." and "MICROSOFT CORPORATION" should be treated as one entity
+- **Build a fingerprinting system**: Hash normalized names and skip API calls for exact matches you've seen before
+- **Extract and use context clues**: If the payee column has adjacent columns like "Amount", "Category", "Type" - include those as context for better classification
+
+## 2. **Smarter Batching Strategy**
+- **Group similar names in batches**: Send "Microsoft", "Microsoft Corp", "Microsoft LLC" together so GPT understands they're related
+- **Dynamic batch sizing**: Start with 10 names, if getting high confidence, increase to 50. If low confidence, decrease to 5
+- **Context-aware batching**: Include a few high-confidence classifications in each batch as examples for GPT
+
+## 3. **Multi-Pass Classification**
+```
+Pass 1: Local pattern matching (instant, free)
+- Ends with LLC/Inc/Corp → Business
+- Contains "Department of" → Government  
+- Matches IRS, DMV, USPS → Government
+- Contains Insurance/Mutual → Insurance
+
+Pass 2: Fuzzy matching against known entities (fast, free)
+- Use Levenshtein distance against previous classifications
+- If 90%+ match, use cached classification
+
+Pass 3: GPT classification (only for unknowns)
+- Include context from Pass 1&2 results
+- Send with examples from same file
+```
+
+## 4. **Self-Improving Classification**
+- **Pattern extraction**: After GPT classifies "State Farm Insurance" as Insurance, automatically learn that "*Farm Insurance" pattern = Insurance
+- **Confidence calibration**: Track GPT's confidence scores over time and adjust your 95% threshold based on actual accuracy
+- **Build domain-specific rules**: After seeing 100+ classifications, auto-generate rules like "entities containing 'Federal' are 71% likely Government"
+
+## 5. **Advanced Deduplication**
+- **Phonetic matching**: Use Soundex/Metaphone to catch "Smith" vs "Smythe"
+- **Company name standardization**: "IBM" = "International Business Machines"
+- **Address-based deduplication**: If address columns exist, same address = same entity even if names differ
+
+## 6. **Context Enhancement**
+Instead of sending just "Microsoft" to GPT, send:
+```
+Payee: Microsoft
+Amount: $5,000 (if available)
+Frequency: Monthly (if detectable)
+Other payees in file: Apple, Google, Amazon (shows tech context)
+Industry context: Technology services
+```
+
+## 7. **Intelligent SIC Code Assignment**
+- **Build SIC code cache**: Map common business names to SIC codes locally
+- **Industry clustering**: If you classify "Microsoft" as 7372, bias similar tech companies toward related codes
+- **Parent-child relationships**: If "Microsoft Azure" appears, inherit from "Microsoft" parent
+
+## 8. **Statistical Validation**
+- **Anomaly detection**: Flag if a file has 95% individuals (probably a payroll file)
+- **Distribution analysis**: Government payments typically <5% of business files. Flag outliers
+- **Cross-validation**: If same payee appears multiple times with different amounts, validate classification consistency
+
+## 9. **Compound Entity Resolution**
+- **Split joint entities**: "John and Jane Smith" → Individual (not Business)
+- **DBA handling**: "McDonald's DBA Golden Arches" → extract real business name
+- **Subsidiary detection**: "Microsoft Azure" → inherits Business classification from parent
+
+## 10. **Optimized API Usage**
+- **Request compression**: Instead of sending each name separately, create a structured prompt that classifies 20-30 entities in one call
+- **Selective field usage**: Only request SIC codes for Business classifications
+- **Fallback strategies**: If GPT-4o fails, try with relaxed confidence (85%) before marking as failed
+
+## 11. **Data Quality Scoring**
+Calculate and track:
+- **Input quality score**: How clean is the data? Lots of special characters = low quality
+- **Classification certainty**: Average confidence across all classifications
+- **Completeness score**: What % successfully classified?
+- Use these scores to auto-adjust processing strategy
+
+## 12. **Smart Caching Layer**
+```javascript
+// Hierarchical cache
+Cache Level 1: Exact match (instant)
+Cache Level 2: Normalized match (remove Inc, LLC, etc)
+Cache Level 3: Fuzzy match (80%+ similarity)
+Cache Level 4: Pattern match (regex patterns)
+Cache Level 5: GPT API call (last resort)
+```
+
+These improvements would make your core engine significantly more intelligent, efficient, and accurate without any user intervention needed.
