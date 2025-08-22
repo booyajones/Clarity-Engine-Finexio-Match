@@ -24,6 +24,8 @@ import { mastercardSearchRequests } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 import { mastercardApi } from "./services/mastercardApi";
 import apiGateway from "./apiGateway";
+import { dashboardCache } from "./services/dashboardCache";
+import { memoryMonitor } from "./utils/memoryOptimizer";
 // Simple address field detection function
 function detectAddressFields(headers: string[]): Record<string, string> {
   const addressMapping: Record<string, string> = {};
@@ -268,86 +270,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }));
 
-  // Dashboard stats - Fixed for 100% functionality
+  // Dashboard stats - Optimized with caching
   app.get("/api/dashboard/stats", async (req, res) => {
     try {
-      // Get real cached supplier count
-      const { pool } = await import('./db');
-      const supplierCountResult = await pool.query('SELECT COUNT(*) as count FROM cached_suppliers');
-      const cachedSuppliers = parseInt(supplierCountResult.rows[0].count);
-      
-      // Get Finexio match stats - calculate for recent batches
-      const finexioStatsResult = await pool.query(`
-        WITH recent_batches AS (
-          SELECT id FROM upload_batches 
-          WHERE status = 'completed' 
-          ORDER BY created_at DESC 
-          LIMIT 5
-        ),
-        recent_classifications AS (
-          SELECT pc.id
-          FROM payee_classifications pc
-          JOIN recent_batches rb ON pc.batch_id = rb.id
-        )
-        SELECT 
-          COUNT(DISTINCT pm.classification_id) as total_matched,
-          COUNT(DISTINCT rc.id) as total_classifications,
-          AVG(pm.finexio_match_score) as avg_score
-        FROM recent_classifications rc
-        LEFT JOIN payee_matches pm ON pm.classification_id = rc.id AND pm.finexio_match_score > 0
-      `);
-      
-      const totalClassifications = parseInt(finexioStatsResult.rows[0].total_classifications) || 0;
-      const finexioMatched = parseInt(finexioStatsResult.rows[0].total_matched) || 0;
-      const finexioMatchRate = totalClassifications > 0 ? 
-        Math.round((finexioMatched / totalClassifications) * 100) : 0;
-      
-      // Get Google Address Validation stats
-      const googleStatsResult = await pool.query(`
-        WITH recent_batches AS (
-          SELECT id FROM upload_batches 
-          WHERE status = 'completed' 
-          ORDER BY created_at DESC 
-          LIMIT 5
-        ),
-        recent_classifications AS (
-          SELECT pc.*
-          FROM payee_classifications pc
-          JOIN recent_batches rb ON pc.batch_id = rb.id
-        )
-        SELECT 
-          COUNT(*) as total_records,
-          COUNT(CASE WHEN google_address_validation_status = 'validated' THEN 1 END) as validated,
-          COUNT(CASE WHEN google_address_validation_status IS NOT NULL AND google_address_validation_status != '' THEN 1 END) as attempted,
-          AVG(CASE WHEN google_address_confidence IS NOT NULL THEN google_address_confidence ELSE NULL END) as avg_confidence
-        FROM recent_classifications
-      `);
-      
-      const googleTotal = parseInt(googleStatsResult.rows[0].total_records) || 0;
-      const googleValidated = parseInt(googleStatsResult.rows[0].validated) || 0;
-      const googleAttempted = parseInt(googleStatsResult.rows[0].attempted) || 0;
-      const googleAvgConfidence = parseFloat(googleStatsResult.rows[0].avg_confidence) || 0;
-      const googleValidationRate = googleTotal > 0 ? Math.round((googleValidated / googleTotal) * 100) : 0;
-      
-      const stats = await storage.getClassificationStats();
-      
-      // Override with actual supplier count for 100% accuracy
-      res.json({
-        ...stats,
-        totalPayees: cachedSuppliers,
-        cachedSuppliers,
-        finexio: {
-          matchRate: finexioMatchRate,
-          totalMatches: finexioMatched,
-          enabled: true // Finexio is always enabled since we have the full database
-        },
-        google: {
-          validationRate: googleValidationRate,
-          totalValidated: googleValidated,
-          avgConfidence: Math.round(googleAvgConfidence * 100),
-          enabled: googleAttempted > 0 // Enabled if any records have been attempted
-        }
+      // Use cache for expensive stats calculation
+      const stats = await dashboardCache.getStats('dashboard-main', async () => {
+        const { pool } = await import('./db');
+        
+        // Run all queries in parallel for better performance
+        const [supplierCountResult, finexioStatsResult, googleStatsResult, storageStats] = await Promise.all([
+          // Query 1: Supplier count
+          pool.query('SELECT COUNT(*) as count FROM cached_suppliers'),
+          
+          // Query 2: Finexio stats - optimized query
+          pool.query(`
+            SELECT 
+              COUNT(DISTINCT pm.classification_id) as total_matched,
+              COUNT(DISTINCT pc.id) as total_classifications,
+              AVG(pm.finexio_match_score) as avg_score
+            FROM (
+              SELECT pc.id
+              FROM payee_classifications pc
+              WHERE pc.batch_id IN (
+                SELECT id FROM upload_batches 
+                WHERE status = 'completed' 
+                ORDER BY created_at DESC 
+                LIMIT 5
+              )
+            ) pc
+            LEFT JOIN payee_matches pm ON pm.classification_id = pc.id AND pm.finexio_match_score > 0
+          `),
+          
+          // Query 3: Google stats - optimized query
+          pool.query(`
+            SELECT 
+              COUNT(*) as total_records,
+              SUM(CASE WHEN google_address_validation_status = 'validated' THEN 1 ELSE 0 END) as validated,
+              SUM(CASE WHEN google_address_validation_status IS NOT NULL AND google_address_validation_status != '' THEN 1 ELSE 0 END) as attempted,
+              AVG(CASE WHEN google_address_confidence IS NOT NULL THEN google_address_confidence END) as avg_confidence
+            FROM payee_classifications
+            WHERE batch_id IN (
+              SELECT id FROM upload_batches 
+              WHERE status = 'completed' 
+              ORDER BY created_at DESC 
+              LIMIT 5
+            )
+          `),
+          
+          // Query 4: Storage stats
+          storage.getClassificationStats()
+        ]);
+        
+        // Process results
+        const cachedSuppliers = parseInt(supplierCountResult.rows[0].count) || 0;
+        
+        const totalClassifications = parseInt(finexioStatsResult.rows[0].total_classifications) || 0;
+        const finexioMatched = parseInt(finexioStatsResult.rows[0].total_matched) || 0;
+        const finexioMatchRate = totalClassifications > 0 ? 
+          Math.round((finexioMatched / totalClassifications) * 100) : 0;
+        
+        const googleTotal = parseInt(googleStatsResult.rows[0].total_records) || 0;
+        const googleValidated = parseInt(googleStatsResult.rows[0].validated) || 0;
+        const googleAttempted = parseInt(googleStatsResult.rows[0].attempted) || 0;
+        const googleAvgConfidence = parseFloat(googleStatsResult.rows[0].avg_confidence) || 0;
+        const googleValidationRate = googleTotal > 0 ? 
+          Math.round((googleValidated / googleTotal) * 100) : 0;
+        
+        return {
+          ...storageStats,
+          totalPayees: cachedSuppliers,
+          cachedSuppliers,
+          finexio: {
+            matchRate: finexioMatchRate,
+            totalMatches: finexioMatched,
+            enabled: true
+          },
+          google: {
+            validationRate: googleValidationRate,
+            totalValidated: googleValidated,
+            avgConfidence: Math.round(googleAvgConfidence * 100),
+            enabled: googleAttempted > 0
+          }
+        };
       });
+      
+      res.json(stats);
     } catch (error) {
       console.error("Error fetching dashboard stats:", error);
       res.status(500).json({ error: "Internal server error" });

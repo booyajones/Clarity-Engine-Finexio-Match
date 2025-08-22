@@ -18,10 +18,10 @@ if (!process.env.DATABASE_URL) {
 
 export const pool = new Pool({ 
   connectionString: process.env.DATABASE_URL,
-  connectionTimeoutMillis: 30000,  // 30 second timeout for high load
-  idleTimeoutMillis: 300000,       // 5 minute idle timeout
-  max: 20,                         // Reduced for better memory management
-  maxUses: 7500,                   // Higher reuse for sustained performance
+  connectionTimeoutMillis: 10000,  // 10 second timeout
+  idleTimeoutMillis: 30000,        // 30 second idle timeout  
+  max: 5,                          // Optimized for low memory environment
+  maxUses: 10000,                  // High reuse to minimize connection overhead
   allowExitOnIdle: true            // Allow graceful shutdown
 });
 
