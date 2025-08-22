@@ -152,16 +152,17 @@ type SearchStatusResponse = z.infer<typeof SearchStatusResponseSchema>;
 type SearchResultsResponse = z.infer<typeof SearchResultsResponseSchema>;
 
 export class MastercardApiService {
+  private static instance: MastercardApiService | null = null;
   private activeSearches = new Map<string, SearchStatusResponse>();
   private searchStartTimes = new Map<string, number>(); // Track when each search started for accurate timing
   private isConfigured: boolean;
   private privateKey: string | null = null;
   // Minimal cache to save memory in critical situations
   private resultCache = new Map<string, { timestamp: number; data: any }>();
-  private readonly CACHE_TTL = 60000; // 1 minute cache only (critical memory mode)
-  private readonly MAX_CACHE_SIZE = 5; // Minimal cache to prevent OOM
+  private readonly CACHE_TTL = 30000; // 30 seconds cache only (critical memory mode)
+  private readonly MAX_CACHE_SIZE = 2; // Tiny cache to prevent OOM
 
-  constructor() {
+  private constructor() {
     // Check if we have the necessary credentials and extract private key
     this.isConfigured = this.initializeCredentials();
     if (!this.isConfigured) {
@@ -1205,5 +1206,15 @@ export class MastercardApiService {
   }
 }
 
+// Singleton pattern to prevent multiple instances
+let mastercardApiInstance: MastercardApiService | null = null;
+
+export const getMastercardApi = (): MastercardApiService => {
+  if (!mastercardApiInstance) {
+    mastercardApiInstance = new MastercardApiService();
+  }
+  return mastercardApiInstance;
+};
+
 // Export singleton instance
-export const mastercardApi = new MastercardApiService();
+export const mastercardApi = getMastercardApi();

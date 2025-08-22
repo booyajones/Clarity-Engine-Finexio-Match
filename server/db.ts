@@ -16,16 +16,17 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
+// CRITICAL MEMORY MODE: Minimal database connections
 export const pool = new Pool({ 
   connectionString: process.env.DATABASE_URL + '?sslmode=require',
-  connectionTimeoutMillis: 10000,  // 10 second timeout
-  idleTimeoutMillis: 10000,        // 10 second idle timeout (reduced from 30)
-  max: 2,                          // Minimum connections for critical memory situation
-  maxUses: 1000,                   // Reduce connection reuse to free memory faster
+  connectionTimeoutMillis: 5000,   // 5 second timeout
+  idleTimeoutMillis: 5000,         // 5 second idle timeout
+  max: 1,                          // SINGLE connection only for critical memory
+  maxUses: 100,                    // Aggressively recycle connections
   allowExitOnIdle: true,           // Allow graceful shutdown
   // Additional optimizations
-  statement_timeout: 30000,         // 30 second statement timeout
-  query_timeout: 30000              // 30 second query timeout
+  statement_timeout: 15000,         // 15 second statement timeout
+  query_timeout: 15000              // 15 second query timeout
 });
 
 // Singleton pattern to prevent multiple pool instances

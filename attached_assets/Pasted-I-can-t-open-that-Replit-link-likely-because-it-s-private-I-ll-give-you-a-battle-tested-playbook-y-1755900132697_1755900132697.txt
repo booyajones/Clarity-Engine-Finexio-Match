@@ -1,0 +1,267 @@
+I can’t open that Replit link, likely because it’s private. I’ll give you a battle-tested playbook you can apply right now. If you share read access later, I’ll tailor fixes to your code.
+
+# What usually blows up memory on Replit or small servers
+
+1. Loading big models or vector indexes more than once per process.
+2. Holding entire transcripts, PDFs, or embeddings in RAM instead of streaming or paging.
+3. Caches that never evict.
+4. Multiple workers or auto-reload spinning up duplicate copies of the model.
+5. Leaks from reference cycles or objects kept in global scope after use.
+6. GPU memory not being freed between calls (if you’re using PyTorch).
+
+# Quick wins you can ship today
+
+**Keep only one model and one index in memory**
+
+* FastAPI: load once on startup, reuse via app state.
+
+```python
+# app.py
+from fastapi import FastAPI
+from functools import lru_cache
+
+app = FastAPI()
+
+@lru_cache(maxsize=1)
+def get_embedder():
+    from sentence_transformers import SentenceTransformer
+    return SentenceTransformer("all-MiniLM-L6-v2", device="cpu")  # tiny, stable
+
+@lru_cache(maxsize=1)
+def get_vectorstore():
+    # Example: chroma on disk, not in memory
+    import chromadb
+    return chromadb.PersistentClient(path="chroma_store")
+```
+
+* Streamlit: use persistent caches, set limits.
+
+```python
+import streamlit as st
+@st.cache_resource(show_spinner=False)
+def load_embedder():
+    from sentence_transformers import SentenceTransformer
+    return SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
+
+@st.cache_resource(show_spinner=False)
+def load_chroma():
+    import chromadb
+    return chromadb.PersistentClient(path="chroma_store")
+```
+
+**Turn off duplicate processes**
+
+* Uvicorn: avoid reload in prod and limit workers.
+
+```
+uvicorn app:app --host 0.0.0.0 --port 8080 --workers 1
+```
+
+* Streamlit: set `server.maxUploadSize` and `client.caching` wisely in `.streamlit/config.toml`.
+
+**Make embeddings memory-safe**
+
+* Batch, don’t materialize full lists.
+
+```python
+from itertools import islice
+
+def batched(iterable, n=128):
+    it = iter(iterable)
+    while True:
+        chunk = list(islice(it, n))
+        if not chunk: break
+        yield chunk
+
+def embed_iter(docs, embedder, upsert):
+    for chunk in batched(docs, 128):
+        vecs = embedder.encode(chunk, batch_size=128, convert_to_numpy=True, show_progress_bar=False)
+        upsert(chunk, vecs)   # write straight to disk-backed store
+```
+
+**Use a disk-backed cache with eviction**
+
+```python
+from diskcache import Cache
+cache = Cache("cache_dir", size_limit=int(2e9))  # ~2 GB cap
+@cache.memoize(expire=86400)
+def heavy_call(key): ...
+```
+
+**Persist vector data, don’t keep it all in RAM**
+
+* Chroma: use `PersistentClient(path="chroma_store")`.
+* FAISS: store on disk and load only needed shards. If index is large, switch to IVF+PQ:
+
+```python
+# Build compressed FAISS for big corpora
+import faiss, numpy as np
+d = 384  # MiniLM embeddings
+nlist = 4096
+m = 16  # product quantization
+quantizer = faiss.IndexFlatL2(d)
+index = faiss.IndexIVFPQ(quantizer, d, nlist, m, 8)  # 8-bit codes
+index.train(train_vecs.astype('float32'))
+index.add(all_vecs.astype('float32'))
+faiss.write_index(index, "faiss_ivfpq.index")
+```
+
+**Downcast data**
+
+```python
+import pandas as pd, numpy as np
+def shrink_df(df: pd.DataFrame) -> pd.DataFrame:
+    for c in df.select_dtypes(include=["float64"]).columns:
+        df[c] = pd.to_numeric(df[c], downcast="float")
+    for c in df.select_dtypes(include=["int64"]).columns:
+        df[c] = pd.to_numeric(df[c], downcast="integer")
+    return df
+```
+
+**Release memory after big ops**
+
+```python
+import gc, psutil
+def release(*objs):
+    for o in objs: del o
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
+
+def rss_mb():
+    import os
+    return psutil.Process().memory_info().rss / 1024 / 1024
+```
+
+# If you’re using PyTorch or Transformers
+
+**Load small and safe**
+
+```python
+from transformers import AutoModel, AutoTokenizer
+tok = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+model = AutoModel.from_pretrained(
+    "sentence-transformers/all-MiniLM-L6-v2",
+    torch_dtype="auto",
+    low_cpu_mem_usage=True
+)
+model.eval()
+```
+
+* Wrap inference with `torch.no_grad()`.
+* If you accidentally put tensors on GPU, memory will spike. Keep everything on CPU on Replit:
+
+```python
+import torch
+device = torch.device("cpu")
+with torch.no_grad():
+    out = model(input_ids.to(device), attention_mask=mask.to(device))
+```
+
+* Between requests:
+
+```python
+import torch; torch.cuda.empty_cache()  # only if using CUDA
+```
+
+# Typical leak patterns and fixes
+
+* **Global lists/dicts holding all uploads or chunks.** Replace with iterators or write directly to a store.
+* **LangChain / custom chains storing history in memory.** Use a file-backed or Redis history with a token cap.
+* **Nested closures capturing large objects.** Move heavy objects to a cache function or a class with explicit `.close()`.
+* **Pandas dataframes kept across sessions.** Save to Parquet and reload slices when needed.
+* **Web server reloads or multiple workers.** See the Uvicorn flag above.
+* **Streamlit session\_state growth.** Store only IDs or filenames in `st.session_state`, not big objects.
+
+# Add lightweight observability
+
+**Tracemalloc + top offenders**
+
+```python
+import tracemalloc, atexit
+tracemalloc.start()
+
+def dump_top(n=15):
+    import linecache
+    snap = tracemalloc.take_snapshot().filter_traces((
+        tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
+        tracemalloc.Filter(False, "<unknown>"),
+    ))
+    stats = snap.statistics('lineno')
+    for s in stats[:n]:
+        frame = s.traceback[0]
+        print(f"{frame.filename}:{frame.lineno} -> {s.size/1024:.1f} KiB")
+
+atexit.register(dump_top)
+```
+
+**Per-request RSS logging**
+
+```python
+from time import time
+import psutil, os
+
+def log_mem(stage=""):
+    rss = psutil.Process(os.getpid()).memory_info().rss/1024/1024
+    print(f"[MEM] {stage} RSS={rss:.0f}MB")
+```
+
+**Run a quick profiler locally if possible**
+
+* `pip install memray` then:
+
+```
+python -m memray run -o mem.bin app.py
+python -m memray flamegraph mem.bin
+```
+
+* Or `pip install scalene` then:
+
+```
+scalene app.py
+```
+
+# Replit-specific guardrails
+
+* Assume a tight RAM ceiling. Treat your vector store and caches as disk-first.
+* Avoid big `.pkl` loads. Prefer on-disk formats you can memory-map or stream.
+* If you must keep a model, pick MiniLM or a similar small embedder. Do not keep both embedder and LLM in the same process on free/low-tier plans.
+
+# A minimal “safe pipeline” pattern
+
+This is a pattern that stays under small memory budgets while handling large text.
+
+```python
+def iter_lines(path, chunk_size=4096):
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        buf = []
+        total = 0
+        for line in f:
+            buf.append(line.rstrip("\n"))
+            total += len(line)
+            if total >= chunk_size:
+                yield " ".join(buf)
+                buf.clear()
+                total = 0
+        if buf: yield " ".join(buf)
+
+def index_file(path, embedder, collection):
+    for chunk in iter_lines(path, 8000):
+        emb = embedder.encode([chunk], convert_to_numpy=True)
+        collection.add(documents=[chunk], embeddings=[emb[0]])
+```
+
+# Triage checklist
+
+1. Log RSS at start, after model load, after indexing, after each request.
+2. Confirm single process and single model instance.
+3. Persist vector data to disk and compress large indexes.
+4. Batch embeddings. No giant lists in memory.
+5. Add eviction to caches.
+6. Downcast data and release memory after big steps.
+7. Run `tracemalloc` for a few requests. Fix the top 3 offenders it reports.
+
+If you can grant repo access or paste your main app file plus the embedding/index code, I’ll mark exact lines to change and give you diff-style patches.
