@@ -84,13 +84,22 @@ function detectAddressFields(headers: string[]): Record<string, string> {
   return addressMapping;
 }
 
-// Global type for Mastercard results cache
+// Global type for Mastercard results cache with LRU
+import { LRUCache } from 'lru-cache';
+
 declare global {
-  var mastercardResults: Record<string, {
-    timestamp: number;
+  var mastercardResultsCache: LRUCache<string, {
     status: string;
     data: any;
-  }> | undefined;
+  }>;
+}
+
+// Initialize bounded LRU cache (max 10 items, 2 minute TTL)
+if (!global.mastercardResultsCache) {
+  global.mastercardResultsCache = new LRUCache<string, any>({
+    max: 10,
+    ttl: 120000 // 2 minutes
+  });
 }
 
 // Financial-themed random batch names

@@ -998,8 +998,8 @@ export class MastercardApiService {
   }>): Promise<Map<string, any>> {
     const enrichmentResults = new Map<string, any>();
 
-    // Process in batches of 3000 (Mastercard limit)
-    const batchSize = 3000;
+    // Process in smaller batches for memory safety
+    const batchSize = 500; // Reduced from 3000
     for (let i = 0; i < payees.length; i += batchSize) {
       const batch = payees.slice(i, i + batchSize);
       const merchants = this.prepareMerchants(batch);

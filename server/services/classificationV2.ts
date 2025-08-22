@@ -349,8 +349,8 @@ export class OptimizedClassificationService {
     stream: Readable,
     signal: AbortSignal
   ): Promise<void> {
-    const BATCH_SIZE = 1000; // Maximum batch size for Tier 5  
-    const MAX_CONCURRENT = 500; // Maximum concurrency for 30,000 RPM
+    const BATCH_SIZE = 250; // Reduced for memory safety
+    const MAX_CONCURRENT = 50; // Reduced for memory constraints
     let buffer: PayeeData[] = [];
     let totalProcessed = 0;
     let totalRecords = 0;
@@ -408,10 +408,8 @@ export class OptimizedClassificationService {
       const elapsedSeconds = (Date.now() - startTime) / 1000;
       const recordsPerSecond = totalProcessed / elapsedSeconds;
       
-      // Calculate accuracy as average confidence score
-      const classifications = await storage.getBatchClassifications(batchId);
-      const totalConfidence = classifications.reduce((sum, c) => sum + c.confidence, 0);
-      const accuracy = classifications.length > 0 ? totalConfidence / classifications.length : 0;
+      // Calculate accuracy using SQL aggregation (memory efficient)
+      const accuracy = await storage.getBatchAccuracy(batchId);
       
       // Update batch to enriching status now that classification is done
       await storage.updateUploadBatch(batchId, {

@@ -19,29 +19,26 @@ app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 // Trust proxy for better security behind reverse proxies
 app.set('trust proxy', 1);
 
+// CRITICAL FIX: Remove response body logging to save memory
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+  let responseSize = 0;
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
+  // Track response size without capturing body
+  const originalSend = res.send;
+  res.send = function(data) {
+    if (data) {
+      responseSize = Buffer.byteLength(data);
+    }
+    return originalSend.apply(res, arguments);
   };
 
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-
+      // Log only metadata, not the body
+      const logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms [${responseSize} bytes]`;
       log(logLine);
     }
   });

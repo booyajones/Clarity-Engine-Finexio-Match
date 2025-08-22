@@ -1,0 +1,111 @@
+Got it. I dug through the repo and there are a few hotspots that will chew RAM fast, plus some easy wins. Here’s a practical plan that improves memory and overall throughput without stalling feature work.
+
+# Fix these first
+
+1. Stream Excel, don’t stringify it
+   Right now you convert a whole worksheet to a giant string with `XLSX.utils.sheet_to_csv` then write it to disk. That spikes memory on big files. Switch to a streaming CSV writer. While you’re here, stop reading the same workbook twice in the preview route.
+
+* The double read happens in the upload/preview flow, e.g., workbook is read for headers, then again for preview rows  .
+* The conversion builds the full CSV string in memory here: `const csvData = XLSX.utils.sheet_to_csv(worksheet)` .
+
+**What to change**
+
+* Use SheetJS streaming API or a streaming reader like `exceljs` to pipe rows directly to a temp CSV file or straight into your `csv-parser` pipeline. That removes the big intermediate string entirely.
+* In your service, replace `convertExcelToCsv` so it streams to disk instead of returning a giant string. Keep the rest of `createCsvStream` as-is, since it already streams CSV rows into your classification flow  .
+
+2. Stop loading whole classification batches into memory to compute accuracy
+   After processing, you call `getBatchClassifications(batchId)` and reduce in JS to compute accuracy. That pulls the entire batch into RAM. For large uploads that’s brutal .
+
+**What to change**
+
+* Compute accuracy in SQL with `AVG(confidence)` for that batch and update once. You already use SQL aggregation elsewhere for stats; follow the same pattern from storage methods that aggregate without loading all rows.
+
+3. Cap or remove response-body logging
+   Your log middleware stringifies every API JSON response then trims to 80 chars for logs. The trim doesn’t help memory because you already built the full string. This can blow up on large responses. Replace body logging with structured fields only, or log a byte size instead of the whole payload. The capture happens in the `/api/*` handler in `index.ts` where you patch `res.json` before sending the body .
+
+4. Don’t keep unbounded in-memory caches
+   `mastercardResults` is a global cache without TTL. That’s a slow leak as traffic grows. Put it behind a tiny LRU with a small max size and a short TTL, or store it in Redis with expiry. It’s declared at top-level in routes .
+
+5. Lower concurrency and shrink batch sizes under pressure
+   `processPayeeStream` uses `BATCH_SIZE = 1000` and hints at `MAX_CONCURRENT = 500` during classification. That’s aggressive for a memory-constrained Node process .
+   **What to change**
+
+* Start with `BATCH_SIZE = 250` and gate concurrency off current RSS. You already have memory monitoring utilities wired up. Use those to throttle dynamically when RSS > 70% of the container limit.
+
+# Next quick wins
+
+6. BigQuery supplier sync: never fetch “all” into memory
+   `getAllSuppliers()` returns an array of every supplier, and your sync scripts then slice and upsert. This pulls the full result set into a single JS array first . The sync scripts call it with no limit and then process the huge array in batches, which is still O(N) RAM at the start  .
+   **What to change**
+
+* Page BigQuery results (e.g., 5k–10k at a time) and upsert as you go. Or use the BigQuery node client’s row streaming to avoid building a giant in-memory list.
+
+7. Make batch classifications API strictly paginated
+   Any route that returns batch classifications should be paginated the way your detail endpoint already is. The “batch accuracy” read should use a single aggregate query rather than returning the whole set to the app layer. Tie this to #2 above.
+
+8. Keep the workbook in memory once per request
+   In the preview route, read the workbook once, derive headers and the preview rows from that same object, then drop it. This removes one large buffer and shortens GC pauses in the hot path  .
+
+9. Turn on backpressure everywhere
+   Your CSV pipeline is already streaming, which is good. Make sure inserts respect backpressure. Use `pipeline()` from `stream/promises` around your readers and writers, and throttle DB upserts to small chunks. You’re already saving classifications in chunks of 500 which is reasonable .
+
+10. Tighten the DB pool for predictable memory
+    You’ve set `max: 2` on the Neon pool to stay lean. Keep that, but consider a slightly larger pool only if you reduce per-request memory. Current `db.ts` opts are prudent for memory safety .
+
+# A few code-level edits to make now
+
+**A. Streaming Excel conversion**
+Replace the current `convertExcelToCsv()` that builds `csvData` with a streaming version:
+
+* Read a worksheet row-by-row and write to a `fs.createWriteStream(csvPath)`.
+* If you stick with SheetJS, use its stream writer for CSV to avoid the in-memory string. This directly replaces the `sheet_to_csv(...)` call that allocates the whole file in RAM .
+
+**B. Single-pass workbook read in preview route**
+In `routes.ts`, reuse the same `workbook` object for headers and preview rows instead of calling `XLSX.readFile` twice  .
+
+**C. SQL accuracy instead of array reduce**
+Replace the `getBatchClassifications(batchId)` + JS reduce in `classificationV2` with one SQL call:
+
+```ts
+// storage.ts
+async getBatchAccuracy(batchId: number) {
+  const [row] = await db.execute(sql`
+    SELECT AVG(confidence)::float AS accuracy
+    FROM ${payeeClassifications}
+    WHERE batch_id = ${batchId}
+  `);
+  return row?.accuracy ?? 0;
+}
+```
+
+Then call `await storage.getBatchAccuracy(batchId)` where you currently load the whole batch and sum it in code .
+
+**D. Response logging**
+In `index.ts`, delete the response-body capture. Keep method, path, status, latency, and a response-size metric. Logging the JSON body is not worth the memory tradeoff in production .
+
+**E. Concurrency throttle**
+In `classificationV2.processPayeeStream`, drop `BATCH_SIZE` to \~250 and add a guard: if RSS > 70% of limit, pause reading until outstanding inserts drain, then resume. The hooks for status updates are already there .
+
+# Structural improvements over the next sprint
+
+* Move heavy transforms off the web thread. Put Excel parsing and enrichment into the dedicated worker container and trigger from the API via a job record. Your worker scaffold exists, so this is wiring and retries rather than new plumbing .
+
+* Make supplier sync incremental. Add “since last refresh” filtering in BigQuery, or checkpoint on `id` or timestamp. Avoid ever loading a complete supplier list into a single array. The current full-table reads are the main risk .
+
+* Replace ad hoc caches with a small LRU and Redis TTL. Global objects like `mastercardResults` should either be bounded in-process or moved to Redis with expiry so one hot customer doesn’t pin memory indefinitely .
+
+# Runtime and ops tweaks
+
+* Keep `--max-old-space-size=512` on the gateway only after the streaming fixes. If you must bump it, do so slightly and only after you’ve eliminated the big string allocations.
+* Add memory alarms using your `memoryMonitor` utilities. Trigger throttling or graceful restarts when RSS crosses a threshold. You’re already importing monitor/optimizer modules, so add a small controller that gates classification concurrency when `rss > X%` and clears optional caches before you even consider a restart  .
+
+---
+
+If you want, I’ll draft the exact patches for:
+
+* streaming `convertExcelToCsv`
+* removing body logging
+* adding `getBatchAccuracy` and swapping its callsite
+* paging BigQuery sync
+
+Say the word and I’ll hand you PR-ready diffs.

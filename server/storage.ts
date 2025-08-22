@@ -737,6 +737,22 @@ export class DatabaseStorage implements IStorage {
       return [];
     }
   }
+
+  async getBatchAccuracy(batchId: number): Promise<number> {
+    try {
+      // Calculate accuracy using SQL aggregation (memory efficient)
+      const result = await db.execute(sql`
+        SELECT AVG(confidence)::float AS accuracy
+        FROM ${payeeClassifications}
+        WHERE batch_id = ${batchId}
+      `);
+      
+      return result.rows[0]?.accuracy || 0;
+    } catch (error) {
+      console.error('Error calculating batch accuracy:', error);
+      return 0;
+    }
+  }
 }
 
 export const storage = new DatabaseStorage();
