@@ -6,12 +6,12 @@ import { memoryManager } from '../utils/memoryManager';
 
 const router = Router();
 
-// Dashboard stats cache with 5-minute TTL
+// Dashboard stats cache with 2-minute TTL to reduce memory
 const statsCache = new LRUCache<string, any>({
-  max: 5, // Reduced for memory optimization
-  ttl: 300000, // 5 minutes
-  allowStale: true,
-  updateAgeOnGet: true,
+  max: 1, // Only cache 1 item to minimize memory
+  ttl: 120000, // 2 minutes (reduced from 5)
+  allowStale: false,
+  updateAgeOnGet: false,
   dispose: (value, key) => {
     console.log(`♻️ Evicting dashboard cache entry: ${key}`);
   }

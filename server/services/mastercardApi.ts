@@ -6,17 +6,26 @@ import { db } from "../db";
 import { mastercardSearchRequests } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
-// Simple OAuth header generation without complex monkey-patching
+// OAuth header generation with P12 file support
 function generateOAuthHeader(method: string, url: string, consumerKey: string, privateKey: string, body?: string): string {
   try {
     // For GET requests, don't include body
     const payload = method.toUpperCase() === 'GET' ? undefined : body;
     
-    // Use the library directly with proper parameters
-    const authHeader = oauth.getAuthorizationHeader(url, method, payload, consumerKey, privateKey);
-    
-    console.log(`Generated OAuth header for ${method} ${url}`);
-    return authHeader;
+    // Check if we're using a P12 file (marked with 'P12_FILE')
+    if (privateKey === 'P12_FILE') {
+      // Use P12 file directly with the OAuth library
+      const p12Path = config.p12Path;
+      const signingKey = oauth.readP12(p12Path, config.keystoreAlias, config.keystorePassword);
+      const authHeader = oauth.getAuthorizationHeader(url, method, payload, consumerKey, signingKey);
+      console.log(`Generated OAuth header for ${method} ${url} (using P12)`);
+      return authHeader;
+    } else {
+      // Use PEM private key directly
+      const authHeader = oauth.getAuthorizationHeader(url, method, payload, consumerKey, privateKey);
+      console.log(`Generated OAuth header for ${method} ${url} (using PEM)`);
+      return authHeader;
+    }
   } catch (error) {
     console.error('OAuth generation failed:', error);
     throw new Error(`OAuth signature generation failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -35,7 +44,7 @@ const MASTERCARD_CONFIG = {
     privateKey: process.env.MASTERCARD_KEY || process.env.MASTERCARD_PRIVATE_KEY,
     certificate: process.env.MASTERCARD_CERT,
     privateKeyPath: './mastercard-private-key.pem',
-    p12Path: process.env.MASTERCARD_P12_PATH || './Finexio_MasterCard_Production_2025-production.p12',
+    p12Path: process.env.MASTERCARD_P12_PATH || './attached_assets/Finexio_MasterCard_Production_2025-production.p12',
     keystorePassword: process.env.MASTERCARD_KEYSTORE_PASSWORD,
     keystoreAlias: process.env.MASTERCARD_KEY_ALIAS || process.env.MASTERCARD_KEYSTORE_ALIAS,
     // Extract clientId from consumer key (part after the !)
@@ -47,7 +56,7 @@ const MASTERCARD_CONFIG = {
     privateKey: process.env.MASTERCARD_KEY || process.env.MASTERCARD_PRIVATE_KEY,
     certificate: process.env.MASTERCARD_CERT,
     privateKeyPath: './mastercard-private-key.pem',
-    p12Path: process.env.MASTERCARD_P12_PATH || './Finexio_MasterCard_Production_2025-production.p12',
+    p12Path: process.env.MASTERCARD_P12_PATH || './attached_assets/Finexio_MasterCard_Production_2025-production.p12',
     keystorePassword: process.env.MASTERCARD_KEYSTORE_PASSWORD,
     keystoreAlias: process.env.MASTERCARD_KEY_ALIAS || process.env.MASTERCARD_KEYSTORE_ALIAS,
     // Extract clientId from consumer key (part after the !)
@@ -147,10 +156,10 @@ export class MastercardApiService {
   private searchStartTimes = new Map<string, number>(); // Track when each search started for accurate timing
   private isConfigured: boolean;
   private privateKey: string | null = null;
-  // Disabled cache to reduce memory usage
+  // Minimal cache to save memory in critical situations
   private resultCache = new Map<string, { timestamp: number; data: any }>();
-  private readonly CACHE_TTL = 300000; // 5 minutes cache (reduced from 1 hour)
-  private readonly MAX_CACHE_SIZE = 100; // Limit cache size
+  private readonly CACHE_TTL = 60000; // 1 minute cache only (critical memory mode)
+  private readonly MAX_CACHE_SIZE = 5; // Minimal cache to prevent OOM
 
   constructor() {
     // Check if we have the necessary credentials and extract private key
@@ -165,8 +174,8 @@ export class MastercardApiService {
       console.log('✅ Mastercard API properly configured and ready');
     }
     
-    // Clean up caches periodically to prevent memory leaks
-    setInterval(() => this.cleanupCaches(), 300000); // Every 5 minutes
+    // Clean up caches frequently in critical memory mode
+    setInterval(() => this.cleanupCaches(), 60000); // Every minute
   }
 
   // Clean up old cache entries and search data
@@ -289,23 +298,22 @@ export class MastercardApiService {
       try {
         const p12Data = fs.readFileSync(config.p12Path);
         // For P12 certificates, we need to extract the private key
-        // Using Node.js built-in crypto support for PKCS#12
-        const keyObject = crypto.createPrivateKey({
-          key: p12Data,
-          format: 'der',
-          passphrase: config.keystorePassword
-        });
+        // Node.js crypto module doesn't directly support P12 extraction
+        // The mastercard-oauth1-signer library handles P12 files internally
+        console.log('📄 P12 file found at:', config.p12Path);
+        console.log('   File size:', p12Data.length, 'bytes');
+        console.log('   Keystore alias:', config.keystoreAlias);
+        console.log('   Has password:', !!config.keystorePassword);
         
-        this.privateKey = keyObject.export({
-          type: 'pkcs8',
-          format: 'pem'
-        }) as string;
-        
-        console.log('✅ Mastercard P12 certificate loaded successfully');
+        // The OAuth library will handle P12 extraction internally
+        // We'll pass the P12 path to the OAuth signer when generating signatures
+        this.privateKey = 'P12_FILE'; // Marker to indicate P12 usage
+        console.log('✅ P12 certificate file registered for use');
+        console.log('   OAuth library will handle key extraction during signing');
         return true;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error('❌ Failed to load Mastercard P12 certificate:', errorMessage);
+        console.error('❌ Failed to read P12 certificate:', errorMessage);
         return false;
       }
     }

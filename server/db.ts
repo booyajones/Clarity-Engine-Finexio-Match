@@ -19,9 +19,9 @@ if (!process.env.DATABASE_URL) {
 export const pool = new Pool({ 
   connectionString: process.env.DATABASE_URL + '?sslmode=require',
   connectionTimeoutMillis: 10000,  // 10 second timeout
-  idleTimeoutMillis: 30000,        // 30 second idle timeout  
-  max: 3,                          // Reduced to 3 connections for memory optimization
-  maxUses: 10000,                  // High reuse to minimize connection overhead
+  idleTimeoutMillis: 10000,        // 10 second idle timeout (reduced from 30)
+  max: 2,                          // Minimum connections for critical memory situation
+  maxUses: 1000,                   // Reduce connection reuse to free memory faster
   allowExitOnIdle: true,           // Allow graceful shutdown
   // Additional optimizations
   statement_timeout: 30000,         // 30 second statement timeout
