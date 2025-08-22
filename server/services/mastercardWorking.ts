@@ -3,14 +3,14 @@ import fs from 'fs';
 import oauth from 'mastercard-oauth1-signer';
 
 const config = {
-  consumerKey: process.env.MASTERCARD_CONSUMER_KEY || '8Mg4p8h-0kO7rNwUlRfWhRyvQlzRphvEEujbNW8yabd509dd!e09833ad819042f695507b05bdd001230000000000000000',
-  clientId: 'e09833ad819042f695507b05bdd001230000000000000000',
-  privateKeyPath: './mastercard-private-key.pem',
+  consumerKey: process.env.MASTERCARD_CONSUMER_KEY || '',
+  clientId: process.env.MASTERCARD_CLIENT_ID || '',
+  privateKeyPath: process.env.MASTERCARD_PRIVATE_KEY_PATH || '',
   baseUrl: 'https://api.mastercard.com/track/search'
 };
 
-// This search ID has 1000+ real merchants
-const WORKING_SEARCH_ID = 'ac654a4c-55a7-4ed7-8485-1817a10e37bd';
+// Search ID should be from environment or database
+const WORKING_SEARCH_ID = process.env.MASTERCARD_SEARCH_ID || '';
 
 export class MastercardWorkingService {
   private privateKey: string;

@@ -1,6 +1,23 @@
+# Environment variables - CRITICAL: Never commit these!
+.env
+.env.local
+.env.production
+.env.*
+
+# Private keys and certificates
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+mastercard-private-key.pem
+*-production.p12
+
+# Dependencies and build
 node_modules
 dist
 .DS_Store
 server/public
 vite.config.ts.*
-*.tar.gzattached_assets/*.json
+*.tar.gz
+attached_assets/*.json
