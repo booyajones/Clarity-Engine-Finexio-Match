@@ -38,21 +38,21 @@ export class ClassificationIntelligence {
   };
 
   constructor() {
-    // Initialize caches with memory-safe limits
+    // MINIMAL: Tiny caches for single-customer use
     this.fingerprintCache = new LRUCache<string, FingerprintCache>({
-      max: 10000,
-      ttl: 1000 * 60 * 60 * 24, // 24 hours
+      max: 100,  // Was 10000 - reduced by 99%
+      ttl: 1000 * 60 * 10, // 10 minutes only
       sizeCalculation: () => 1
     });
     
     this.patternCache = new LRUCache<string, ClassificationResult>({
-      max: 5000,
-      ttl: 1000 * 60 * 60 * 12, // 12 hours
+      max: 50,  // Was 5000 - reduced by 99%
+      ttl: 1000 * 60 * 10, // 10 minutes
     });
     
     this.fuzzyMatchCache = new LRUCache<string, ClassificationResult>({
-      max: 2000,
-      ttl: 1000 * 60 * 60 * 6, // 6 hours
+      max: 20,  // Was 2000 - reduced by 99%
+      ttl: 1000 * 60 * 5, // 5 minutes
     });
     
     this.learnedPatterns = new Map();

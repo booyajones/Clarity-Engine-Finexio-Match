@@ -149,42 +149,18 @@ export default function Home() {
     zip: "",
   });
 
-  const [, forceUpdate] = useState({});
 
   const { data: batches, isLoading, refetch: refetchBatches } = useQuery<UploadBatch[]>({
     queryKey: ["/api/upload/batches"],
-    refetchInterval: (query) => {
-      // Only poll when there are active processing or enriching batches
-      const hasProcessingBatches = query.state.data?.some(
-        batch => batch.status === "processing" || (batch.status as string) === "enriching" || 
-        batch.status === "pending" || 
-        (!batch.completedAt && batch.status !== "failed" && batch.status !== "cancelled")
-      );
-      return hasProcessingBatches ? 5000 : false; // Poll every 5 seconds only when processing or enriching
-    }
+    // REMOVED: No polling - single customer can manually refresh
   });
 
-  // Force re-render every second for active batches to update duration display
-  useEffect(() => {
-    const hasActiveBatches = batches?.some(
-      batch => batch.status === "processing" || 
-      (batch.status as string) === "enriching" ||
-      (!batch.completedAt && batch.status !== "failed" && batch.status !== "cancelled")
-    );
-    
-    if (hasActiveBatches) {
-      const interval = setInterval(() => {
-        forceUpdate({}); // Force re-render to update duration display
-      }, 1000); // Update every second
-      
-      return () => clearInterval(interval);
-    }
-  }, [batches]);
+  // REMOVED: No auto-updates - causing memory churn
 
-  // Dashboard stats query
+  // Dashboard stats query - no auto refresh
   const { data: dashboardStats } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats"],
-    refetchInterval: 30000, // Refresh every 30 seconds
+    // REMOVED: No auto-refresh for single customer
   });
 
   const previewMutation = useMutation({

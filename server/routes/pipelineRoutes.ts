@@ -15,12 +15,13 @@ import { akkioModule } from '../services/modules/akkioModule';
 
 const router = Router();
 
-// Register all modules with the orchestrator
+// MINIMAL: Only register essential modules for single-customer use
 pipelineOrchestrator.registerModule(classificationModule);
 pipelineOrchestrator.registerModule(finexioModule);
-pipelineOrchestrator.registerModule(googleAddressModule);
+// DISABLED: Non-essential modules to save memory
+// pipelineOrchestrator.registerModule(googleAddressModule);
 pipelineOrchestrator.registerModule(mastercardModule);
-pipelineOrchestrator.registerModule(akkioModule);
+// pipelineOrchestrator.registerModule(akkioModule);
 
 /**
  * Execute full pipeline for a batch

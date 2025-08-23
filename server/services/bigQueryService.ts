@@ -23,7 +23,10 @@ export class BigQueryService {
   private isConfigured = false;
   
   constructor() {
-    this.initialize();
+    // DISABLED: BigQuery not needed for single-customer use
+    // this.initialize();
+    this.isConfigured = false;
+    console.log('🔕 BigQuery service disabled for memory optimization');
   }
   
   private initialize() {
@@ -37,6 +40,9 @@ export class BigQueryService {
         });
         this.isConfigured = true;
         console.log('✅ BigQuery service initialized successfully');
+        // MINIMAL: Clear any loaded data to save memory
+        this.bigquery = null;
+        this.isConfigured = false;
       } else {
         console.log('🔔 BigQuery credentials not configured. Payee matching will be unavailable.');
       }

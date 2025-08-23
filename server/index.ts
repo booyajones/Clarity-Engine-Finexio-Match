@@ -1,15 +1,8 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { schedulerService } from "./services/schedulerService";
+// STRIPPED: Removed 90% of background services for single-customer use
 import { mastercardApi } from "./services/mastercardApi";
-import { getMastercardWorker } from "./services/mastercardWorker";
-import memoryMonitor from './utils/memoryMonitor';
-import { optimizeDatabase, scheduleCleanup } from './utils/performanceOptimizer';
-import { memoryManager } from './utils/memoryManager';
-import { performFullOptimization, setupAutoOptimization } from './utils/performOptimization';
-import { batchEnrichmentMonitor } from './services/batchEnrichmentMonitor';
-import { emergencyCleanup, startAutoCleanup } from './services/globalCacheCleanup';
 
 const app = express();
 // Security and optimization middleware
@@ -27,11 +20,11 @@ app.use((req, res, next) => {
 
   // Track response size without capturing body
   const originalSend = res.send;
-  res.send = function(data) {
+  res.send = function(data: any) {
     if (data) {
       responseSize = Buffer.byteLength(data);
     }
-    return originalSend.apply(res, arguments);
+    return originalSend.call(res, data);
   };
 
   res.on("finish", () => {
@@ -98,74 +91,10 @@ app.use((req, res, next) => {
       log(`✅ Server serving on port ${port}`);
       console.log(`🌐 Server ready at http://0.0.0.0:${port}`);
       
-      // Initialize performance optimizations
-      try {
-        // Start memory monitoring with new memory manager
-        memoryMonitor.start(20000); // Check every 20 seconds (more aggressive)
-        console.log('✅ Memory monitoring started');
-        
-        // Start aggressive auto cleanup
-        startAutoCleanup(15000); // Every 15 seconds
-        console.log('✅ Auto cleanup started');
-        
-        // Force initial memory cleanup after 3 seconds
-        setTimeout(() => {
-          console.log('🔧 Running startup memory optimization...');
-          emergencyCleanup();
-          memoryManager.forceCleanup().catch(console.error);
-        }, 3000);
-        
-        // Run comprehensive optimization
-        performFullOptimization().catch(console.error);
-        
-        // Setup auto-optimization for critical memory situations
-        setupAutoOptimization();
-        
-        // Optimize database connections
-        optimizeDatabase();
-        
-        // Schedule cleanup tasks
-        scheduleCleanup();
-        console.log('✅ Performance optimizations initialized');
-      } catch (error) {
-        console.error('Failed to initialize performance optimizations:', error);
-      }
-      
-      // Start batch enrichment monitor after successful server startup
-      setTimeout(() => {
-        console.log('🚀 Starting batch enrichment monitor...');
-        batchEnrichmentMonitor.start();
-      }, 5000); // Start after 5 seconds to allow services to fully initialize
-
-      // Initialize scheduled jobs after server starts - with delay for stability
-      setTimeout(() => {
-        try {
-          schedulerService.initialize();
-          console.log('✅ Scheduler service initialized');
-        } catch (error) {
-          console.error('Failed to initialize scheduler:', error);
-        }
-      }, 2000);
-
-      // Start Mastercard worker for polling search results - with delay for stability
-      setTimeout(() => {
-        try {
-          if (mastercardApi.isServiceConfigured()) {
-            getMastercardWorker().start();
-            console.log('✅ Mastercard worker started for polling search results');
-            
-            // Start Mastercard verification service to ensure all records get processed
-            import('./services/mastercardVerificationService').then(({ mastercardVerificationService }) => {
-              mastercardVerificationService.start();
-              console.log('✅ Mastercard verification service started');
-            }).catch(error => {
-              console.error('Failed to start Mastercard verification service:', error);
-            });
-          }
-        } catch (error) {
-          console.error('Failed to start Mastercard worker:', error);
-        }
-      }, 3000);
+      // MINIMAL: Only log that server is ready
+      // No background workers, no monitors, no schedulers
+      // Everything runs on-demand when actually needed
+      console.log('✅ Server ready - minimal memory mode');
     });
   } catch (error) {
     console.error('Failed to start server:', error);

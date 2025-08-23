@@ -50,10 +50,10 @@ export class ProgressivePipeline {
       costSavings: 0
     };
     
-    // GPT results cache
+    // MINIMAL: Tiny GPT cache for single-customer
     this.gptCache = new LRUCache<string, ClassificationResult>({
-      max: 5000,
-      ttl: 1000 * 60 * 60 * 24 // 24 hours
+      max: 50,  // Was 5000 - reduced by 99%
+      ttl: 1000 * 60 * 5 // 5 minutes only
     });
     
     // Initialize OpenAI if available

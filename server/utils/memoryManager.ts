@@ -68,15 +68,8 @@ export class MemoryManager {
    */
   private async optimizeDatabaseConnections(): Promise<void> {
     try {
-      // Reduce pool size if memory is high
-      const currentMax = (pool as any)._options?.max || 5;
-      const newMax = Math.max(2, Math.floor(currentMax * 0.7));
-      
-      if (newMax < currentMax) {
-        console.log(`📊 Reducing database pool from ${currentMax} to ${newMax} connections`);
-        // Force close idle connections
-        await pool.query('SELECT 1'); // Dummy query to activate cleanup
-      }
+      // MINIMAL: Pool is already at minimum (1 connection)
+      // Skip database optimization for single-customer use
     } catch (error) {
       console.error('Error optimizing database connections:', error);
     }
@@ -128,7 +121,11 @@ export class MemoryManager {
       clearInterval(this.monitoringInterval);
     }
     
-    // Check memory every 30 seconds
+    // DISABLED: No monitoring interval for single-customer
+    // Monitoring causes memory churn
+    return;
+    
+    // Original monitoring code (disabled):
     this.monitoringInterval = setInterval(async () => {
       const { percentage, used, total } = this.getMemoryUsage();
       
@@ -144,7 +141,7 @@ export class MemoryManager {
       }
     }, 30000); // 30 seconds
     
-    console.log('✅ Memory manager initialized (threshold: 85%)');
+    console.log('✅ Memory manager initialized (monitoring disabled for single-customer)');
   }
   
   /**
