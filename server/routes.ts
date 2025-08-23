@@ -5,6 +5,7 @@ import { classificationService } from "./services/classification";
 import multer from "multer";
 import csv from "csv-parser";
 import XLSX from "xlsx";
+import { streamingProcessor } from "./services/streamingProcessor";
 import fs from "fs";
 import path from "path";
 import { z } from "zod";
@@ -242,6 +243,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // System monitoring and performance routes
   app.use('/api/monitoring', monitoringRoutes);
   
+  // Telemetry routes for lightweight memory monitoring
+  const telemetryRoutes = await import('./routes/telemetry');
+  app.use('/api/telemetry', telemetryRoutes.default);
+  
   // Mastercard webhook routes (no rate limiting for webhooks)
   app.use('/', mastercardWebhookRouter);
   
@@ -307,21 +312,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         headers = firstRow;
       } else if (ext === ".xlsx" || ext === ".xls") {
         console.log(`Processing Excel file: ${filePath}, extension: ${ext}`);
-        console.log(`XLSX object:`, typeof XLSX, Object.keys(XLSX));
         
         try {
-          const workbook = XLSX.readFile(filePath);
-          const sheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[sheetName];
-          // Only read first row for headers (memory optimization)
-          const headerRow = XLSX.utils.sheet_to_json(worksheet, { 
-            header: 1, 
-            range: 0 // First row only
-          }) as string[][];
-          headers = headerRow[0] || [];
+          // Use streaming processor for memory-safe header extraction
+          const previewResult = await streamingProcessor.getPreview(filePath, 1);
+          headers = previewResult.headers;
           console.log(`Excel headers extracted:`, headers);
         } catch (xlsxError) {
-          console.error("XLSX processing error:", xlsxError);
+          console.error("Excel processing error:", xlsxError);
           throw xlsxError;
         }
       }
@@ -351,27 +349,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .on("error", reject);
         });
       } else if (ext === ".xlsx" || ext === ".xls") {
-        // Excel preview - already have data
-        const workbook = XLSX.readFile(filePath);
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        // Only read first 11 rows for preview (memory optimization)
-        const previewData = XLSX.utils.sheet_to_json(worksheet, { 
-          header: 1,
-          range: { s: { r: 0, c: 0 }, e: { r: 10, c: 50 } } // First 11 rows, max 50 cols
-        }) as string[][];
+        // Use streaming processor for memory-safe preview
+        const previewResult = await streamingProcessor.getPreview(filePath, 10);
+        preview = previewResult.preview.slice(0, 5);
         
         // Convert to sample data format for prediction
-        sampleData = previewData.slice(1, 11); // Skip header row, take next 10
-        
-        // Convert rows to objects using headers for preview
-        preview = jsonData.slice(1, 6).map(row => {
-          const obj: any = {};
-          headers.forEach((header, index) => {
-            obj[header] = row[index] || "";
-          });
-          return obj;
-        });
+        sampleData = previewResult.preview.map(row => 
+          headers.map(header => row[header] || '')
+        );
       }
 
       // Auto-detect address fields for Google validation

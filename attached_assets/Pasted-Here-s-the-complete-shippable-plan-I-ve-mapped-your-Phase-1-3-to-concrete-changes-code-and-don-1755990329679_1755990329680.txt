@@ -1,0 +1,285 @@
+Here’s the complete, shippable plan.
+
+I’ve mapped your Phase 1–3 to concrete changes, code, and “done” checks so you can merge with confidence.
+
+Phase 1 — High-impact, immediate reductions
+
+1) Caches: delete preload, cap what remains
+
+BigQuery Supplier Cache
+	•	Change remove any startup preload of 300k suppliers.
+	•	Replace with read-through + pagination at source.
+
+// src/data/suppliers.ts
+import LRU from 'lru-cache'
+import { bqFetchSupplierById, bqListSuppliersPage } from './bq'
+
+const supplierCache = new LRU<string, Supplier>({
+  max: 10_000, ttl: 6 * 60 * 60 * 1000, updateAgeOnGet: true
+})
+
+export async function getSupplier(id: string) {
+  const hit = supplierCache.get(id)
+  if (hit) return hit
+  const s = await bqFetchSupplierById(id)   // single-row query
+  if (s) supplierCache.set(id, s)
+  return s
+}
+
+export async function listSuppliers(opts:{pageSize:number, pageToken?:string}) {
+  // database-side paging only
+  return bqListSuppliersPage(opts)
+}
+
+Classification + GPT results
+	•	Change swap in LRU with strict limits and TTLs. Target combined max 1k–2k.
+
+// src/cache/index.ts
+import LRU from 'lru-cache'
+
+export const classifyCache = new LRU<string, any>({ max: 1200, ttl: 7*24*60*60*1000 })
+export const gptCache       = new LRU<string, any>({ max: 500,  ttl: 24*60*60*1000 })
+
+Optional (better) move GPT/classifier caches to Redis so app heap stays flat.
+
+// src/cache/redisLru.ts
+import IORedis from 'ioredis'
+const r = new IORedis(process.env.REDIS_URL!)
+const TTL_S = 24*60*60
+
+export async function cacheGet(ns:string, key:string) {
+  return r.get(`${ns}:${key}`).then(v => v && JSON.parse(v))
+}
+export async function cacheSet(ns:string, key:string, val:any, ttl=TTL_S) {
+  await r.setex(`${ns}:${key}`, ttl, JSON.stringify(val))
+}
+
+Definition of done
+	•	No code path calls “load all suppliers”.
+	•	Max cache sizes enforced in code. Unit tests assert .size <= max.
+	•	HeapUsed at idle is ≥250–600 MB lower than before, depending on data shape.
+
+2) Streaming file processing, no duplicate buffers
+
+Change process Excel row-by-row and write in small batches. Skip Excel→CSV staging.
+
+// src/import/excelStream.ts
+import ExcelJS from 'exceljs'
+import pLimit from 'p-limit'
+
+export async function importWorkbook(path:string) {
+  const wb = new ExcelJS.stream.xlsx.WorkbookReader(path, { worksheets:'emit' })
+  for await (const ws of wb) {
+    if (ws.type !== 'worksheet') continue
+    const batch: any[] = []
+    const flush = async () => {
+      if (!batch.length) return
+      const rows = batch.splice(0, batch.length)
+      await insertRows(rows)               // single DB call
+    }
+    for await (const row of ws.rows) {
+      batch.push({
+        col1: row.getCell(1).value ?? null,
+        col2: row.getCell(2).value ?? null,
+      })
+      if (batch.length >= 100) await flush()  // 50–100 is ideal
+    }
+    await flush()
+  }
+}
+
+CSV
+
+import fs from 'node:fs'
+import { parse } from 'csv-parse'
+
+export async function importCsv(path:string) {
+  const parser = fs.createReadStream(path).pipe(parse({ columns:true }))
+  let batch:any[] = []
+  for await (const rec of parser) {
+    batch.push(project(rec))
+    if (batch.length >= 100) { await insertRows(batch); batch = [] }
+  }
+  if (batch.length) await insertRows(batch)
+}
+
+Definition of done
+	•	Peak RSS during import is within 1.2× of idle baseline, not 2–3×.
+	•	No temp CSV files created. No in-memory workbook object.
+
+3) Singleton service initialization
+
+Change one Mastercard service and one DB pool for the whole process.
+
+// src/container.ts
+import { MastercardService } from './services/mastercard'
+import { createPgPool } from './db/pool'
+
+const g = globalThis as any
+g.__container ??= {
+  mc: new MastercardService(loadMcConfig()),
+  pg: createPgPool({ max: 5, min: 1 })
+}
+export const getMc = () => g.__container.mc
+export const getPg = () => g.__container.pg
+
+Search and replace all new MastercardService() with getMc(). Do the same for pools.
+
+Definition of done
+	•	Logs show Mastercard service constructed exactly once.
+	•	Total DB connections equals pool max, not “pools × services”.
+
+⸻
+
+Phase 2 — Reduce churn and overhead
+
+4) Frontend polling → push or chill
+
+Best switch to SSE for batches and dashboard.
+
+Server
+
+// GET /events
+res.writeHead(200, {'Content-Type':'text/event-stream','Cache-Control':'no-cache'})
+eventBus.on('batch:update', e => res.write(`event: batch\ndata:${JSON.stringify(e)}\n\n`))
+
+Client
+
+useEffect(() => {
+  const es = new EventSource('/events')
+  es.addEventListener('batch', (e:any) => queryClient.setQueryData(['batches'], JSON.parse(e.data)))
+  return () => es.close()
+}, [])
+
+If polling must stay, back off hard and scope updates.
+
+// dashboard
+useQuery(['dash'], fetchDash, {
+  staleTime: 120_000,
+  refetchInterval: document.visibilityState === 'visible' ? 120_000 : false,
+  refetchOnWindowFocus: false
+})
+
+// batches
+useQuery(['batches'], fetchBatches, {
+  refetchInterval: document.visibilityState === 'visible' ? 30_000 : false
+})
+
+// replace 1s global re-render with a local timer
+const [now, setNow] = useState(Date.now())
+useEffect(() => {
+  const t = setInterval(() => setNow(Date.now()), 1000)
+  return () => clearInterval(t)
+}, [])
+
+Definition of done
+	•	No 1s global re-renders. Only a local countdown updates.
+	•	Network panel shows one SSE stream or far fewer requests per minute.
+
+5) Centralize DB connections
+
+Change export one pool from container.ts. Remove per-service pools. Cap to 5–8.
+
+// src/db/pool.ts
+import { Pool } from 'pg'
+export const createPgPool = (cfg:any) => new Pool({ max: 5, min: 1, ...cfg })
+
+Definition of done
+	•	SELECT count(*) FROM pg_stat_activity WHERE application_name='your-app' ≈ 5–8.
+	•	No spikes in connection count when workers start.
+
+6) Background workers: on-demand, not forever
+
+Change move from while-true pollers to a queue or webhook.
+
+Using BullMQ example:
+
+// src/queue/index.ts
+import { Queue, Worker } from 'bullmq'
+export const q = new Queue('jobs', { connection:{ url: process.env.REDIS_URL! } })
+
+export function enqueue(name:string, payload:any){ return q.add(name, payload) }
+
+export function startWorkers(){
+  new Worker('jobs', async job => {
+    if (job.name === 'mc:poll') await pollMastercardOnce(job.data)
+    if (job.name === 'batch:enrich') await enrichBatch(job.data)
+  }, { concurrency: 2 })
+}
+
+Definition of done
+	•	No busy loops. Worker CPU is near 0 when no jobs exist.
+	•	Memory returns to baseline after jobs complete.
+
+⸻
+
+Phase 3 — Fine-tuning and monitoring
+
+7) GC and runtime tuning
+	•	Start with safe defaults and observability. Avoid manual GC in hot paths.
+
+Runtime
+
+NODE_OPTIONS="--max-old-space-size=2048 --heapsnapshot-near-heap-limit=1"
+
+Expose GC only in staging
+
+NODE_OPTIONS="--expose-gc"
+
+Call it only after big jobs:
+
+export async function afterBigJob() {
+  setTimeout(() => global.gc?.(), 0)
+}
+
+Telemetry
+
+// src/ops/memory.ts
+export function memorySnapshot() {
+  const m = process.memoryUsage()
+  return {
+    rssMB: +(m.rss/1048576).toFixed(1),
+    heapUsedMB: +(m.heapUsed/1048576).toFixed(1),
+    extMB: +(m.external/1048576).toFixed(1)
+  }
+}
+
+Expose /ops/memory, emit metrics every 30s, alert on:
+	•	HeapUsed jump >150 MB in 60 s.
+	•	RSS above budget for 10 min.
+	•	Open DB connections > pool max.
+
+⸻
+
+Guardrails, tests, and rollout
+
+Feature flags
+
+SINGLE_CUSTOMER=1
+CACHES_IN_REDIS=1        # optional
+
+CI tests
+	•	Unit: cache caps enforced. Attempt to insert 50k items, expect size ≤ max.
+	•	Integration: import a 50k-row workbook. Assert peak RSS < 1.2× idle.
+	•	E2E smoke: open dashboard, trigger one batch, idle 10 min. Heap trend ≤ +50 MB.
+
+Operational playbook
+	1.	Deploy Phase 1 behind SINGLE_CUSTOMER=1.
+	2.	Watch /ops/memory and DB connections for 15 minutes idle, then while importing a file.
+	3.	Roll Phase 2: enable SSE or widen polling. Verify network request rate fell sharply.
+	4.	Roll Phase 3: enable metrics and alerts. Keep manual GC only in staging.
+
+Rollback
+	•	Keep old cache path behind LEGACY_CACHE=1 for 24 hours.
+	•	If Redis is flaky, fall back to in-process LRU with the same caps.
+
+⸻
+
+Expected impact (realistic)
+	•	Remove supplier preload: hundreds of MB back instantly.
+	•	LRU caps: tens to low hundreds of MB saved.
+	•	Streaming imports: peak memory near steady state, not 3×.
+	•	Singletons and one pool: 100–300 MB saved depending on deps.
+	•	Lean workers and calmer UI: fewer retained objects, smoother GC.
+
+If you want, paste the files that currently preload suppliers or spin up extra pools, and I’ll rewrite them to match this plan.
