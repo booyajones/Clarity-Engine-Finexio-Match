@@ -2,23 +2,22 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { BatchCard } from '@/components/batch-card';
-import { StepHeader } from '@/components/ui/step-header';
 import { Upload, TrendingUp, Package, Activity } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function HomeImproved() {
   // Fetch recent batches
-  const { data: batches, isLoading: batchesLoading } = useQuery({
+  const { data: batches = [], isLoading: batchesLoading } = useQuery<any[]>({
     queryKey: ['/api/upload/batches'],
   });
   
   // Fetch dashboard stats
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats = {}, isLoading: statsLoading } = useQuery<any>({
     queryKey: ['/api/dashboard/stats'],
   });
   
-  const recentBatches = batches?.slice(0, 5) || [];
+  const recentBatches = Array.isArray(batches) ? batches.slice(0, 5) : [];
   
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
@@ -125,7 +124,7 @@ export default function HomeImproved() {
               <p className="text-slate-600 mb-6 max-w-md mx-auto">
                 Upload a CSV or Excel file containing payee data for classification and enrichment
               </p>
-              <Link href="/upload">
+              <Link href="/home-old">
                 <Button size="lg" className="min-w-[200px]">
                   <Upload className="h-4 w-4 mr-2" />
                   Select File
@@ -144,7 +143,7 @@ export default function HomeImproved() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Recent Batches</h2>
           {recentBatches.length > 0 && (
-            <Link href="/batches">
+            <Link href="/batch-jobs">
               <Button variant="outline" size="sm">
                 View All
               </Button>

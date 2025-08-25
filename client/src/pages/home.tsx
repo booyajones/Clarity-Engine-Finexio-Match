@@ -68,6 +68,8 @@ interface UploadBatch {
   mastercardEnrichmentTotal?: number;
   mastercardEnrichmentProcessed?: number;
   mastercardActualEnriched?: number;
+  // Finexio tracking
+  finexioMatchedCount?: number;
 }
 
 interface FieldPrediction {
@@ -694,7 +696,7 @@ export default function Home() {
               </Button>
               <Button
                 variant={currentView === "single" ? "default" : "outline"}
-                onClick={() => setCurrentView("single")}
+                onClick={() => setCurrentView("single" as any)}
                 className={`flex items-center gap-2 transition-all ${currentView === "single" ? "shadow-lg" : "hover:shadow-md hover:border-purple-300"}`}
               >
                 <Sparkles className="h-4 w-4" />
@@ -702,7 +704,7 @@ export default function Home() {
               </Button>
               <Button
                 variant={currentView === "keywords" ? "default" : "outline"}
-                onClick={() => setCurrentView("keywords")}
+                onClick={() => setCurrentView("keywords" as any)}
                 className={`flex items-center gap-2 transition-all ${currentView === "keywords" ? "shadow-lg" : "hover:shadow-md hover:border-amber-300"}`}
               >
                 <ClipboardList className="h-4 w-4" />
@@ -746,7 +748,7 @@ export default function Home() {
               </CardHeader>
               <CardContent>
                 {(() => {
-                  const latestBatch = batches[0];
+                  const latestBatch = batches![0];
                   const isEnriching = (latestBatch.status as string) === "enriching" || 
                     (latestBatch.processedRecords === latestBatch.totalRecords && latestBatch.status === "processing");
                   
