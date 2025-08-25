@@ -662,7 +662,7 @@ export default function Home() {
               </Button>
               <Button
                 variant={currentView === "single" ? "default" : "outline"}
-                onClick={() => setCurrentView("single" as any)}
+                onClick={() => setCurrentView("single")}
                 className={`flex items-center gap-2 transition-all ${currentView === "single" ? "shadow-lg" : "hover:shadow-md hover:border-purple-300"}`}
               >
                 <Sparkles className="h-4 w-4" />
@@ -670,7 +670,7 @@ export default function Home() {
               </Button>
               <Button
                 variant={currentView === "keywords" ? "default" : "outline"}
-                onClick={() => setCurrentView("keywords" as any)}
+                onClick={() => setCurrentView("keywords")}
                 className={`flex items-center gap-2 transition-all ${currentView === "keywords" ? "shadow-lg" : "hover:shadow-md hover:border-amber-300"}`}
               >
                 <ClipboardList className="h-4 w-4" />
