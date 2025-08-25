@@ -2,9 +2,18 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { BatchCard } from '@/components/batch-card';
-import { Upload, TrendingUp, Package, Activity } from 'lucide-react';
+import { Upload, TrendingUp, Package, Activity, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
 
 export default function HomeImproved() {
   // Fetch recent batches
@@ -152,29 +161,70 @@ export default function HomeImproved() {
         </div>
         
         {batchesLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3].map((i) => (
-              <Card key={i}>
-                <CardHeader>
-                  <Skeleton className="h-4 w-3/4" />
-                </CardHeader>
-                <CardContent>
-                  <Skeleton className="h-20" />
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <Card>
+            <CardContent className="p-0">
+              <Skeleton className="h-64 w-full" />
+            </CardContent>
+          </Card>
         ) : recentBatches.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {recentBatches.map((batch: any) => (
-              <BatchCard 
-                key={batch.id} 
-                batch={batch}
-                onDelete={(id) => console.log('Delete', id)}
-                onRetry={(id) => console.log('Retry', id)}
-              />
-            ))}
-          </div>
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>File Name</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Records</TableHead>
+                    <TableHead>Processed</TableHead>
+                    <TableHead>Accuracy</TableHead>
+                    <TableHead>Created</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recentBatches.map((batch: any) => (
+                    <TableRow key={batch.id}>
+                      <TableCell className="font-medium">
+                        {batch.originalFilename || batch.filename}
+                      </TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant={
+                            batch.status === 'completed' ? 'default' :
+                            batch.status === 'processing' ? 'outline' :
+                            batch.status === 'failed' ? 'destructive' : 'secondary'
+                          }
+                        >
+                          {batch.status === 'completed' && <CheckCircle2 className="h-3 w-3 mr-1" />}
+                          {batch.status === 'processing' && <Clock className="h-3 w-3 mr-1" />}
+                          {batch.status === 'failed' && <XCircle className="h-3 w-3 mr-1" />}
+                          {batch.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{batch.totalRecords || 0}</TableCell>
+                      <TableCell>
+                        {batch.processedRecords || 0}
+                        {batch.totalRecords > 0 && (
+                          <span className="text-slate-500 ml-1">
+                            ({Math.round((batch.processedRecords / batch.totalRecords) * 100)}%)
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {batch.accuracy ? `${batch.accuracy}%` : '-'}
+                      </TableCell>
+                      <TableCell className="text-slate-600">
+                        {new Date(batch.createdAt).toLocaleDateString()}
+                        <br />
+                        <span className="text-xs">
+                          {new Date(batch.createdAt).toLocaleTimeString()}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         ) : (
           <Card>
             <CardContent className="py-12 text-center">
