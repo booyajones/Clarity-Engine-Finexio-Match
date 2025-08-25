@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
-import { Link } from 'wouter';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { Link, useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { BatchCard } from '@/components/batch-card';
-import { Upload, TrendingUp, Package, Activity, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Upload, TrendingUp, Package, Activity, CheckCircle2, XCircle, Clock, Eye, Trash2, MoreHorizontal } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -14,8 +14,19 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { queryClient } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 
 export default function HomeImproved() {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  
   // Fetch recent batches
   const { data: batches = [], isLoading: batchesLoading } = useQuery<any[]>({
     queryKey: ['/api/upload/batches'],
@@ -26,7 +37,33 @@ export default function HomeImproved() {
     queryKey: ['/api/dashboard/stats'],
   });
   
-  const recentBatches = Array.isArray(batches) ? batches.slice(0, 5) : [];
+  // Delete batch mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (batchId: number) => {
+      const res = await fetch(`/api/upload/batch/${batchId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to delete batch');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/upload/batches'] });
+      toast({
+        title: 'Batch deleted',
+        description: 'The batch has been successfully deleted.',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to delete the batch. Please try again.',
+        variant: 'destructive',
+      });
+    },
+  });
+  
+  const recentBatches = Array.isArray(batches) ? batches : [];
   
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
@@ -147,14 +184,14 @@ export default function HomeImproved() {
         </Card>
       </div>
       
-      {/* Recent Batches */}
+      {/* All Batches */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Recent Batches</h2>
-          {recentBatches.length > 0 && (
-            <Link href="/batch-jobs">
+          <h2 className="text-xl font-semibold">All Batches ({batches.length} total)</h2>
+          {batches.length > 0 && (
+            <Link href="/home-old">
               <Button variant="outline" size="sm">
-                View All
+                Detailed View
               </Button>
             </Link>
           )}
@@ -178,6 +215,7 @@ export default function HomeImproved() {
                     <TableHead>Processed</TableHead>
                     <TableHead>Accuracy</TableHead>
                     <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -218,6 +256,37 @@ export default function HomeImproved() {
                         <span className="text-xs">
                           {new Date(batch.createdAt).toLocaleTimeString()}
                         </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => {
+                                localStorage.setItem('selectedBatchId', batch.id.toString());
+                                setLocation('/home-old');
+                              }}
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                if (confirm('Are you sure you want to delete this batch?')) {
+                                  deleteMutation.mutate(batch.id);
+                                }
+                              }}
+                              className="text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}
