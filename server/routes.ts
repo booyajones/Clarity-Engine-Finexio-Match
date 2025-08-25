@@ -563,6 +563,134 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Retry failed batch processing
+  app.post("/api/upload/batch/:id/retry", async (req, res) => {
+    try {
+      const batchId = parseInt(req.params.id);
+      
+      // Get batch details
+      const batch = await storage.getUploadBatch(batchId);
+      if (!batch) {
+        return res.status(404).json({ error: "Batch not found" });
+      }
+      
+      if (batch.status !== 'failed') {
+        return res.status(400).json({ error: "Can only retry failed batches" });
+      }
+      
+      // Update batch status to processing
+      await storage.updateUploadBatch(batchId, { 
+        status: 'processing',
+        error: null,
+        processedRecords: 0
+      });
+      
+      // Re-trigger processing for this batch
+      const classifications = await storage.getBatchClassifications(batchId);
+      const unprocessedCount = classifications.filter(c => c.status === 'pending-review' || !c.payeeType).length;
+      
+      if (unprocessedCount > 0) {
+        // Re-process unprocessed classifications
+        const { optimizedClassificationService } = await import('./services/classificationV2');
+        optimizedClassificationService.processBatch(batchId, batch.userId);
+      }
+      
+      res.json({ success: true, message: "Batch retry started" });
+    } catch (error) {
+      console.error("Error retrying batch:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Export batch classifications to CSV or Excel
+  app.get("/api/upload/batch/:id/export", async (req, res) => {
+    try {
+      const batchId = parseInt(req.params.id);
+      const format = req.query.format as string || 'csv';
+      
+      // Get batch and classifications
+      const batch = await storage.getUploadBatch(batchId);
+      if (!batch) {
+        return res.status(404).json({ error: "Batch not found" });
+      }
+      
+      const classifications = await storage.getBatchClassifications(batchId);
+      
+      if (format === 'excel') {
+        // Create Excel workbook
+        const ws_data = [
+          // Headers
+          ['Payee Name', 'Type', 'Confidence', 'SIC Code', 'SIC Description', 'Status', 
+           'Finexio Match', 'Finexio Score', 'Google Valid', 'Mastercard Match', 'Akkio Prediction'],
+          // Data rows
+          ...classifications.map(c => [
+            c.originalName || c.cleanedName,
+            c.payeeType,
+            c.confidence ? (c.confidence * 100).toFixed(2) + '%' : '',
+            c.sicCode || '',
+            c.sicDescription || '',
+            c.status,
+            c.finexioSupplierName || '',
+            c.finexioConfidence ? (c.finexioConfidence * 100).toFixed(2) + '%' : '',
+            c.googleValidatedAt ? 'Yes' : 'No',
+            c.mastercardBusinessName || '',
+            c.akkioPredictionValues || ''
+          ])
+        ];
+        
+        const ws = XLSX.utils.aoa_to_sheet(ws_data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Classifications');
+        
+        // Generate buffer
+        const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+        
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${batch.originalFilename || 'export'}_results.xlsx"`);
+        res.send(buffer);
+      } else {
+        // Generate CSV
+        const csvRows = [
+          // Headers
+          'Payee Name,Type,Confidence,SIC Code,SIC Description,Status,Finexio Match,Finexio Score,Google Valid,Mastercard Match,Akkio Prediction',
+          // Data rows
+          ...classifications.map(c => {
+            const fields = [
+              c.originalName || c.cleanedName,
+              c.payeeType,
+              c.confidence ? (c.confidence * 100).toFixed(2) + '%' : '',
+              c.sicCode || '',
+              c.sicDescription || '',
+              c.status,
+              c.finexioSupplierName || '',
+              c.finexioConfidence ? (c.finexioConfidence * 100).toFixed(2) + '%' : '',
+              c.googleValidatedAt ? 'Yes' : 'No',
+              c.mastercardBusinessName || '',
+              c.akkioPredictionValues || ''
+            ];
+            // Escape fields containing commas or quotes
+            return fields.map(f => {
+              const str = String(f);
+              if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return `"${str.replace(/"/g, '""')}"`;
+              }
+              return str;
+            }).join(',');
+          })
+        ];
+        
+        const csvContent = csvRows.join('\n');
+        
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="${batch.originalFilename || 'export'}_results.csv"`);
+        res.send(csvContent);
+      }
+    } catch (error) {
+      console.error("Error exporting batch:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Delete upload batch and all associated classifications
   app.delete("/api/upload/batches/:id", async (req, res) => {
     try {

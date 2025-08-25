@@ -2,7 +2,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { Link, useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { BatchCard } from '@/components/batch-card';
-import { Upload, TrendingUp, Package, Activity, CheckCircle2, XCircle, Clock, Eye, Trash2, MoreHorizontal, Download, RefreshCw, FileSpreadsheet } from 'lucide-react';
+import { Upload, Package, CheckCircle2, XCircle, Clock, Eye, Trash2, MoreHorizontal, Download, RefreshCw, FileSpreadsheet } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -32,10 +32,6 @@ export default function HomeImproved() {
     queryKey: ['/api/upload/batches'],
   });
   
-  // Fetch dashboard stats
-  const { data: stats = {}, isLoading: statsLoading } = useQuery<any>({
-    queryKey: ['/api/dashboard/stats'],
-  });
   
   // Delete batch mutation
   const deleteMutation = useMutation({
@@ -68,97 +64,29 @@ export default function HomeImproved() {
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">
-          Clarity Engine Dashboard
-        </h1>
-        <p className="text-slate-600">
-          AI-powered payee classification and enrichment platform
-        </p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">
+            Clarity Engine 3
+          </h1>
+          <p className="text-slate-600">
+            Professional payee classification and enrichment platform
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <Link href="/home-old">
+            <Button variant="outline">
+              Advanced View
+            </Button>
+          </Link>
+          <Link href="/batch-jobs">
+            <Button variant="outline">
+              Job Monitor
+            </Button>
+          </Link>
+        </div>
       </div>
       
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600">
-              Total Payees
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <span className="text-2xl font-bold">
-                {statsLoading ? (
-                  <Skeleton className="h-8 w-24" />
-                ) : (
-                  stats?.totalPayees?.toLocaleString() || '0'
-                )}
-              </span>
-              <Package className="h-8 w-8 text-slate-400" />
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600">
-              Accuracy Rate
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <span className="text-2xl font-bold">
-                {statsLoading ? (
-                  <Skeleton className="h-8 w-16" />
-                ) : (
-                  `${stats?.accuracy || 95}%`
-                )}
-              </span>
-              <TrendingUp className="h-8 w-8 text-emerald-500" />
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600">
-              Finexio Match Rate
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <span className="text-2xl font-bold">
-                {statsLoading ? (
-                  <Skeleton className="h-8 w-16" />
-                ) : (
-                  `${stats?.finexio?.matchRate || 85}%`
-                )}
-              </span>
-              <Activity className="h-8 w-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600">
-              Completed Batches
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <span className="text-2xl font-bold">
-                {statsLoading ? (
-                  <Skeleton className="h-8 w-16" />
-                ) : (
-                  stats?.completedBatches || '150'
-                )}
-              </span>
-              <Activity className="h-8 w-8 text-indigo-500" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
       
       {/* Main Action Area */}
       <div className="mb-8">
