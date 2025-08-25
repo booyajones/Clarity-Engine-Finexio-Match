@@ -359,8 +359,8 @@ export class MastercardApiService {
       // Test with a minimal search request
       const testRequest: BulkSearchRequest = {
         lookupType: 'SUPPLIERS',
-        maximumMatches: 1,
-        minimumConfidenceThreshold: '0.1',
+        maximumMatches: 5,
+        minimumConfidenceThreshold: '0.01',
         searches: [{
           searchRequestId: `test${Date.now()}`,
           businessName: 'TEST CONNECTION',
@@ -620,16 +620,28 @@ export class MastercardApiService {
       
       console.log(`🔍 Performing new Mastercard search for ${companyName} (cache disabled)`)
       
+      // Clean up business name for better matching
+      const cleanedBusinessName = companyName
+        .toUpperCase()
+        .replace(/\s+CORP(ORATION)?$/i, '')
+        .replace(/\s+INC(ORPORATED)?$/i, '')
+        .replace(/\s+LLC$/i, '')
+        .replace(/\s+LTD$/i, '')
+        .replace(/\s+CO(MPANY)?$/i, '')
+        .trim();
+      
+      console.log(`🧹 Cleaned business name: "${companyName}" -> "${cleanedBusinessName}"`);
+      
       // Generate alphanumeric-only search request ID (Mastercard requirement)
       const searchRequestId = `single${Date.now()}${Math.random().toString(36).substr(2, 9).replace(/[^a-zA-Z0-9]/g, '')}`;
       
       const searchRequest: BulkSearchRequest = {
         lookupType: 'SUPPLIERS' as const,
-        maximumMatches: 1,
-        minimumConfidenceThreshold: '0.1',
+        maximumMatches: 5,
+        minimumConfidenceThreshold: '0.01',
         searches: [{
           searchRequestId,
-          businessName: companyName,
+          businessName: cleanedBusinessName,
           businessAddress: address ? {
             addressLine1: address.address || undefined,
             townName: address.city || undefined,
@@ -684,8 +696,19 @@ export class MastercardApiService {
           if (results && results.results && results.results.length > 0) {
             const firstResult = results.results[0];
             
-            // Check if we have a match (EXACT_MATCH or PARTIAL_MATCH)
-            if (firstResult.matchStatus && firstResult.matchStatus !== 'NO_MATCH' && firstResult.merchantDetails) {
+            // Check if we have any kind of match
+            if (firstResult.matchStatus === 'NO_MATCH') {
+              console.log(`⚠️ Mastercard returned NO_MATCH for: ${companyName}`);
+              // Still return a result object to indicate we tried
+              return {
+                matchConfidence: 0,
+                matchStatus: 'NO_MATCH',
+                businessName: companyName,
+                searched: true,
+                message: 'No match found in Mastercard database',
+                source: 'Mastercard Track API'
+              };
+            } else if (firstResult.matchStatus && firstResult.merchantDetails) {
               const merchant = firstResult.merchantDetails;
               
               const totalTime = ((Date.now() - parseInt(searchRequestId.match(/\d{10,}/)?.[0] || '0')) / 1000).toFixed(1);
@@ -722,8 +745,15 @@ export class MastercardApiService {
         }
       }
       
-      console.log('No Mastercard match found for:', companyName);
-      return null;
+      console.log('⚠️ Mastercard search timeout for:', companyName);
+      return {
+        matchConfidence: 0,
+        matchStatus: 'TIMEOUT',
+        businessName: companyName,
+        searched: true,
+        message: 'Search timed out - Mastercard may be processing',
+        source: 'Mastercard Track API'
+      };
       
     } catch (error) {
       console.error('Error searching Mastercard:', error);
@@ -1021,8 +1051,8 @@ export class MastercardApiService {
 
         const searchResponse = await this.submitBulkSearch({
           lookupType: 'SUPPLIERS' as const,
-          maximumMatches: 1,
-          minimumConfidenceThreshold: '0.1',
+          maximumMatches: 5,
+          minimumConfidenceThreshold: '0.01',
           searches
         });
 
@@ -1125,7 +1155,7 @@ export class MastercardApiService {
       const bulkRequest: BulkSearchRequest = {
         lookupType: 'SUPPLIERS',
         maximumMatches: 5, // Increase to get more potential matches
-        minimumConfidenceThreshold: '0.1',
+        minimumConfidenceThreshold: '0.01',
         searches: [{
           searchRequestId: searchRequestId,
           businessName: payeeName,
