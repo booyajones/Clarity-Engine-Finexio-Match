@@ -6,6 +6,7 @@ Clarity Engine 5 is an AI-powered web application for finance and accounting pro
 ### Recent Updates (January 25, 2025)
 - **Fixed Google Address Module Registration**: Enabled Google Address module and Akkio module in pipeline orchestrator for complete functionality
 - **All Enrichment Services Active**: Classification, Finexio, Google Address, Mastercard, and Akkio modules now properly registered and available
+- **Fixed Mastercard API Integration**: Extracted private key from P12 certificate, configured for production environment, fixed searchRequestId format to be alphanumeric only
 
 ## User Preferences
 - **Communication style**: Simple, everyday language

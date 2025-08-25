@@ -65,7 +65,8 @@ const MASTERCARD_CONFIG = {
 };
 
 // Use production environment in production, sandbox in development
-const environment = process.env.NODE_ENV === 'production' ? 'production' : (process.env.MASTERCARD_ENVIRONMENT || 'sandbox');
+// Force production mode since we have production P12 certificate
+const environment = process.env.NODE_ENV === 'production' ? 'production' : (process.env.MASTERCARD_ENVIRONMENT || 'production');
 const config = MASTERCARD_CONFIG[environment as keyof typeof MASTERCARD_CONFIG];
 
 // Log environment configuration at startup
@@ -361,7 +362,7 @@ export class MastercardApiService {
         maximumMatches: 1,
         minimumConfidenceThreshold: '0.1',
         searches: [{
-          searchRequestId: `test_${Date.now()}`,
+          searchRequestId: `test${Date.now()}`,
           businessName: 'TEST CONNECTION',
           businessAddress: {
             country: 'USA'
@@ -620,7 +621,7 @@ export class MastercardApiService {
       console.log(`🔍 Performing new Mastercard search for ${companyName} (cache disabled)`)
       
       // Generate alphanumeric-only search request ID (Mastercard requirement)
-      const searchRequestId = `single${Date.now()}${Math.random().toString(36).substr(2, 9)}`;
+      const searchRequestId = `single${Date.now()}${Math.random().toString(36).substr(2, 9).replace(/[^a-zA-Z0-9]/g, '')}`;
       
       const searchRequest: BulkSearchRequest = {
         lookupType: 'SUPPLIERS' as const,
@@ -1007,7 +1008,7 @@ export class MastercardApiService {
       try {
         // Submit search - convert merchants to searches format
         const searches = batch.map(payee => ({
-          searchRequestId: payee.id.toString(),
+          searchRequestId: `payee${payee.id}`,
           businessName: payee.name,
           businessAddress: {
             addressLine1: payee.address,
@@ -1103,7 +1104,7 @@ export class MastercardApiService {
 
     try {
       // Track Search requires bulk endpoint even for single searches
-      const searchRequestId = crypto.randomUUID();
+      const searchRequestId = crypto.randomUUID().replace(/-/g, '');
       
       // Log what we're sending to Mastercard
       console.log('Mastercard search data:', {
