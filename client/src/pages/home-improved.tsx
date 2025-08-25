@@ -2,7 +2,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { Link, useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { BatchCard } from '@/components/batch-card';
-import { Upload, TrendingUp, Package, Activity, CheckCircle2, XCircle, Clock, Eye, Trash2, MoreHorizontal } from 'lucide-react';
+import { Upload, TrendingUp, Package, Activity, CheckCircle2, XCircle, Clock, Eye, Trash2, MoreHorizontal, Download, RefreshCw, FileSpreadsheet } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -274,6 +274,106 @@ export default function HomeImproved() {
                               <Eye className="h-4 w-4 mr-2" />
                               View Details
                             </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={async () => {
+                                try {
+                                  const res = await fetch(`/api/upload/batch/${batch.id}/export`, {
+                                    credentials: 'include',
+                                  });
+                                  if (res.ok) {
+                                    const blob = await res.blob();
+                                    const url = window.URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `${batch.originalFilename || batch.filename}_results.csv`;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    document.body.removeChild(a);
+                                    window.URL.revokeObjectURL(url);
+                                    toast({
+                                      title: 'Download started',
+                                      description: 'Your file is being downloaded.',
+                                    });
+                                  } else {
+                                    throw new Error('Download failed');
+                                  }
+                                } catch (error) {
+                                  toast({
+                                    title: 'Download failed',
+                                    description: 'Could not download the file. Please try again.',
+                                    variant: 'destructive',
+                                  });
+                                }
+                              }}
+                            >
+                              <Download className="h-4 w-4 mr-2" />
+                              Download CSV
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={async () => {
+                                try {
+                                  const res = await fetch(`/api/upload/batch/${batch.id}/export?format=excel`, {
+                                    credentials: 'include',
+                                  });
+                                  if (res.ok) {
+                                    const blob = await res.blob();
+                                    const url = window.URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `${batch.originalFilename || batch.filename}_results.xlsx`;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    document.body.removeChild(a);
+                                    window.URL.revokeObjectURL(url);
+                                    toast({
+                                      title: 'Download started',
+                                      description: 'Your Excel file is being downloaded.',
+                                    });
+                                  } else {
+                                    throw new Error('Download failed');
+                                  }
+                                } catch (error) {
+                                  toast({
+                                    title: 'Download failed',
+                                    description: 'Could not download the Excel file. Please try again.',
+                                    variant: 'destructive',
+                                  });
+                                }
+                              }}
+                            >
+                              <FileSpreadsheet className="h-4 w-4 mr-2" />
+                              Download Excel
+                            </DropdownMenuItem>
+                            {batch.status === 'failed' && (
+                              <DropdownMenuItem
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch(`/api/upload/batch/${batch.id}/retry`, {
+                                      method: 'POST',
+                                      credentials: 'include',
+                                    });
+                                    if (res.ok) {
+                                      queryClient.invalidateQueries({ queryKey: ['/api/upload/batches'] });
+                                      toast({
+                                        title: 'Retry started',
+                                        description: 'The batch is being reprocessed.',
+                                      });
+                                    } else {
+                                      throw new Error('Retry failed');
+                                    }
+                                  } catch (error) {
+                                    toast({
+                                      title: 'Retry failed',
+                                      description: 'Could not retry the batch. Please try again.',
+                                      variant: 'destructive',
+                                    });
+                                  }
+                                }}
+                              >
+                                <RefreshCw className="h-4 w-4 mr-2" />
+                                Retry Processing
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem
                               onClick={() => {
                                 if (confirm('Are you sure you want to delete this batch?')) {
