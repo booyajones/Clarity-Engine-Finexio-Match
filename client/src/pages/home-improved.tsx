@@ -243,12 +243,12 @@ export default function HomeImproved() {
                         {batch.processedRecords || 0}
                         {batch.totalRecords > 0 && (
                           <span className="text-slate-500 ml-1">
-                            ({Math.round((batch.processedRecords / batch.totalRecords) * 100)}%)
+                            ({((batch.processedRecords / batch.totalRecords) * 100).toFixed(1)}%)
                           </span>
                         )}
                       </TableCell>
                       <TableCell>
-                        {batch.accuracy ? `${batch.accuracy}%` : '-'}
+                        {batch.accuracy ? `${(batch.accuracy * 100).toFixed(2)}%` : '-'}
                       </TableCell>
                       <TableCell className="text-slate-600">
                         {new Date(batch.createdAt).toLocaleDateString()}

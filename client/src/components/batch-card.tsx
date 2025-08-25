@@ -103,7 +103,7 @@ export function BatchCard({ batch, onDelete, onRetry }: BatchCardProps) {
           <div className="flex items-center justify-between">
             <span>{batch.totalRecords.toLocaleString()} rows</span>
             {batch.accuracy !== undefined && (
-              <span>Accuracy: {Math.round(batch.accuracy)}%</span>
+              <span>Accuracy: {(batch.accuracy * 100).toFixed(2)}%</span>
             )}
           </div>
           
