@@ -658,7 +658,7 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div className="animate-fade-in-up">
               <h1 className="text-4xl font-light text-gray-900 dark:text-gray-100 tracking-wide">
-                <span className="font-normal gradient-text">CLARITY ENGINE</span>
+                <span className="font-normal gradient-text">CLARITY ENGINE 5</span>
               </h1>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 tracking-wide uppercase">Intelligent Payee Classification</p>
             </div>
