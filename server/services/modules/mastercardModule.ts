@@ -67,9 +67,10 @@ class MastercardModule implements PipelineModule {
       console.log(`Found ${businessClassifications.length} Business records to enrich with Mastercard`);
 
       // Prepare payee data for Mastercard enrichment
+      // Use originalName for better Mastercard matching (preserves case and formatting)
       const payeesForEnrichment = businessClassifications.map(c => ({
         id: String(c.id), // Convert ID to string as expected by enrichBatch
-        name: c.cleanedName || c.originalName,
+        name: c.originalName || c.cleanedName, // Prefer original name for better matching
         address: c.address || undefined,
         city: c.city || undefined,
         state: c.state || undefined,
