@@ -65,6 +65,14 @@ class MastercardModule implements PipelineModule {
       }
 
       console.log(`Found ${businessClassifications.length} Business records to enrich with Mastercard`);
+      
+      // Mark all records as pending to avoid UI showing errors
+      for (const classification of businessClassifications) {
+        await storage.updatePayeeClassification(classification.id, {
+          mastercardMatchStatus: 'pending',
+          mastercardSource: 'Processing enrichment request'
+        });
+      }
 
       // Prepare payee data for Mastercard enrichment
       // Use originalName for better Mastercard matching (preserves case and formatting)
