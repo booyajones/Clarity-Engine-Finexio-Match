@@ -359,7 +359,14 @@ export class StreamingProcessor {
     });
     
     const sheetName = workbook.SheetNames[0];
+    if (!sheetName) {
+      throw new Error('No sheets found in Excel file');
+    }
+    
     const worksheet = workbook.Sheets[sheetName];
+    if (!worksheet) {
+      throw new Error(`Sheet "${sheetName}" not found in Excel file`);
+    }
     
     const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
     const headers = data[0] || [];
@@ -371,14 +378,9 @@ export class StreamingProcessor {
       return obj;
     });
     
-    // Get total rows without loading entire file
-    const fullWorkbook = XLSX.readFile(filePath, {
-      sheetRows: 0,
-      bookSheets: true
-    });
-    const fullSheet = fullWorkbook.Sheets[sheetName];
-    const range = XLSX.utils.decode_range(fullSheet['!ref'] || 'A1');
-    const totalRows = range.e.r;
+    // For total rows, we'll use the current data length as an estimate
+    // since we're limiting rows for preview anyway
+    const totalRows = data.length - 1; // Subtract header row
     
     return { headers, preview, totalRows };
   }
