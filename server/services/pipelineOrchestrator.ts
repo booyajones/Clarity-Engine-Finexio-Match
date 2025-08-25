@@ -159,9 +159,15 @@ export class PipelineOrchestrator {
     try {
       await this.updateModuleStatus(batchId, module, 'processing');
       await module.execute(batchId, options);
-      await this.updateModuleStatus(batchId, module, 'completed');
       
-      console.log(`✅ Module ${moduleName} completed independently`);
+      // For Mastercard, don't mark as completed - it processes asynchronously
+      // The worker will update the status when results are ready
+      if (moduleName === 'mastercard') {
+        console.log(`📡 Module ${moduleName} submitted for async processing`);
+      } else {
+        await this.updateModuleStatus(batchId, module, 'completed');
+        console.log(`✅ Module ${moduleName} completed independently`);
+      }
     } catch (error) {
       console.error(`❌ Module ${moduleName} failed:`, error);
       await this.updateModuleStatus(batchId, module, 'error');
