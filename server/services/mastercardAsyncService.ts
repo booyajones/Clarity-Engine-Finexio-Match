@@ -39,7 +39,7 @@ export class MastercardAsyncService {
     }
 
     // CRITICAL: Validate Mastercard service is ready
-    if (!this.mastercardApi.isConfigured()) {
+    if (!this.mastercardApi.isServiceConfigured()) {
       const errorMessage = 'Mastercard API is not configured. Missing required credentials (MASTERCARD_CONSUMER_KEY, MASTERCARD_KEY, etc.)';
       console.error(`❌ ${errorMessage}`);
       throw new Error(errorMessage);
@@ -117,7 +117,7 @@ export class MastercardAsyncService {
 
         try {
           // Validate API configuration before submission
-          if (!this.mastercardApi.isConfigured()) {
+          if (!this.mastercardApi.isServiceConfigured()) {
             throw new Error('Mastercard API is not properly configured - missing credentials or configuration');
           }
 

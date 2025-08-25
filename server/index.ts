@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 // STRIPPED: Removed 90% of background services for single-customer use
 import { mastercardApi } from "./services/mastercardApi";
+import { getMastercardWorker } from "./services/mastercardWorker";
 
 const app = express();
 // Security and optimization middleware
@@ -45,6 +46,13 @@ app.use((req, res, next) => {
     
     // Initialize Mastercard service during startup
     console.log('🔧 Mastercard service initialized:', mastercardApi.isServiceConfigured() ? '✅ Ready' : '❌ Not configured');
+    
+    // Start Mastercard worker if service is configured
+    if (mastercardApi.isServiceConfigured()) {
+      const mastercardWorker = getMastercardWorker();
+      mastercardWorker.start();
+      console.log('📡 Mastercard worker started for polling search results');
+    }
     
     const server = await registerRoutes(app);
     
@@ -108,11 +116,21 @@ app.use((req, res, next) => {
 // Graceful shutdown handling for deployment
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
+  // Stop Mastercard worker if running
+  if (mastercardApi.isServiceConfigured()) {
+    const mastercardWorker = getMastercardWorker();
+    mastercardWorker.stop();
+  }
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully');
+  // Stop Mastercard worker if running
+  if (mastercardApi.isServiceConfigured()) {
+    const mastercardWorker = getMastercardWorker();
+    mastercardWorker.stop();
+  }
   process.exit(0);
 });
 

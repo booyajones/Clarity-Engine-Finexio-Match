@@ -33,7 +33,7 @@ class MastercardModule implements PipelineModule {
       // Validate Mastercard service is properly configured
       const { MastercardApiService } = await import('../mastercardApi');
       const testApi = new MastercardApiService();
-      if (!testApi.isConfigured()) {
+      if (!testApi.isServiceConfigured()) {
         console.error('❌ Mastercard API is not configured - missing credentials');
         await storage.updateUploadBatch(batchId, {
           mastercardEnrichmentStatus: 'error',
