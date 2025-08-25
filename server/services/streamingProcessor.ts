@@ -6,7 +6,7 @@
 
 import { createReadStream } from 'fs';
 import csv from 'csv-parser';
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx';
 import { Readable } from 'stream';
 import { storage } from '../storage';
 
