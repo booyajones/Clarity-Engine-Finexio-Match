@@ -64,23 +64,20 @@ class GoogleAddressModule implements PipelineModule {
               classification.zipCode
             ].filter(Boolean).join(', ');
 
-            const validationResult = await addressValidationService.validateAndStandardizeAddress(
-              addressString,
-              classification.country || 'US'
+            // Use the processAddressValidation method which properly handles validation
+            await addressValidationService.processAddressValidation(
+              classification,
+              {
+                enableGoogleValidation: true,
+                enableOpenAI: true,
+                regionCode: classification.country || 'US'
+              }
             );
 
-            if (validationResult.isValid) {
+            // Check if validation was successful
+            const updatedClassification = await storage.getPayeeClassificationById(classification.id);
+            if (updatedClassification?.googleAddressValidationStatus === 'validated') {
               validatedCount++;
-              
-              // Update classification with validated address
-              await storage.updatePayeeClassification(classification.id, {
-                googleValidatedAddress: validationResult.formattedAddress,
-                googleAddressConfidence: validationResult.confidence,
-                googlePlaceId: validationResult.placeId,
-                googleLatitude: validationResult.latitude,
-                googleLongitude: validationResult.longitude,
-                googleAddressComponents: validationResult.components
-              });
             }
           }
 
