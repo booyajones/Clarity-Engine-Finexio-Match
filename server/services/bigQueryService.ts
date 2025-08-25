@@ -32,14 +32,15 @@ export class BigQueryService {
   private initialize() {
     try {
       // Check if we have BigQuery credentials
-      if (process.env.BIGQUERY_PROJECT_ID && process.env.BIGQUERY_CREDENTIALS) {
+      const projectId = process.env.BIGQUERY_PROJECT_ID || 'finexiopoc';
+      if (process.env.BIGQUERY_CREDENTIALS) {
         const credentials = JSON.parse(process.env.BIGQUERY_CREDENTIALS);
         this.bigquery = new BigQuery({
-          projectId: process.env.BIGQUERY_PROJECT_ID,
+          projectId: projectId,
           credentials: credentials,
         });
         this.isConfigured = true;
-        console.log('✅ BigQuery service initialized successfully');
+        console.log(`✅ BigQuery service initialized successfully with project: ${projectId}`);
         // MINIMAL: Clear any loaded data to save memory
         this.bigquery = null;
         this.isConfigured = false;
@@ -128,7 +129,7 @@ export class BigQueryService {
             WHEN LOWER(COALESCE(mastercard_business_name_c, '')) LIKE CONCAT('%', LOWER(@payeeName), '%') THEN 'Mastercard name contains payee name'
             ELSE 'Partial text match'
           END AS match_reasoning
-        FROM \`${process.env.BIGQUERY_PROJECT_ID}.${dataset}.${table}\`
+        FROM \`${process.env.BIGQUERY_PROJECT_ID || 'finexiopoc'}.${dataset}.${table}\`
         WHERE COALESCE(is_deleted, false) = false
           AND (
             LOWER(name) LIKE CONCAT('%', LOWER(@payeeName), '%')
@@ -218,7 +219,7 @@ export class BigQueryService {
           primary_address_city_c,
           primary_address_state_c,
           ROW_NUMBER() OVER (PARTITION BY LOWER(name) ORDER BY id) as rn
-        FROM \`${process.env.BIGQUERY_PROJECT_ID}.${dataset}.${table}\`
+        FROM \`${process.env.BIGQUERY_PROJECT_ID || 'finexiopoc'}.${dataset}.${table}\`
         WHERE COALESCE(is_deleted, false) = false
           AND name IS NOT NULL
           AND LENGTH(TRIM(name)) > 0
