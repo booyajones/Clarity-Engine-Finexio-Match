@@ -1661,22 +1661,22 @@ export default function Home() {
 
       {/* Active Jobs */}
       {processingBatches.length > 0 && (
-        <Card className="mb-8 border border-orange-200 shadow-sm hover:shadow-md transition-all duration-200 bg-gradient-to-r from-orange-50 to-yellow-50">
-          <CardHeader>
+        <Card className="mb-8 border-2 border-blue-200 shadow-lg hover:shadow-xl transition-all duration-200 bg-white">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100">
             <div className="flex items-center gap-2">
               <div className="relative">
-                <Clock className="h-5 w-5 text-orange-600" />
-                <div className="absolute -top-1 -right-1 h-2 w-2 bg-orange-500 rounded-full animate-pulse" />
+                <Clock className="h-5 w-5 text-blue-600" />
+                <div className="absolute -top-1 -right-1 h-2 w-2 bg-blue-500 rounded-full animate-pulse" />
               </div>
               <CardTitle className="text-xl font-semibold text-gray-900">
                 Active Jobs
               </CardTitle>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="bg-white">
             <div className="space-y-4">
               {processingBatches.map((batch) => (
-                <div key={batch.id} className="border rounded-lg p-4">
+                <div key={batch.id} className="border-2 border-gray-200 rounded-lg p-4 bg-gray-50">
                   <div className="flex justify-between items-start mb-2">
                     <div>
                       <h3 className="font-medium">{batch.originalFilename}</h3>

@@ -175,36 +175,70 @@ export class DatabaseStorage implements IStorage {
       .where(eq(uploadBatches.userId, userId))
       .orderBy(desc(uploadBatches.createdAt));
     
-    // Calculate Finexio match percentage and Mastercard enrichment based on actual data
+    // Calculate real-time progress for each enrichment phase
     for (const batch of batches) {
       if (batch.processedRecords > 0) {
-        // Get count of records with VALID Finexio matches (>=85% confidence threshold)
+        // Get Finexio matching progress and results
         const finexioResult = await db.execute(sql`
-          SELECT COUNT(DISTINCT pm.classification_id) as matched_count
-          FROM payee_matches pm
-          JOIN payee_classifications pc ON pm.classification_id = pc.id
-          WHERE pc.batch_id = ${batch.id} AND pm.finexio_match_score >= 85
+          SELECT 
+            COUNT(DISTINCT pm.classification_id) as matched_count,
+            COUNT(DISTINCT pc.id) as total_processed
+          FROM payee_classifications pc
+          LEFT JOIN payee_matches pm ON pm.classification_id = pc.id AND pm.finexio_match_score >= 85
+          WHERE pc.batch_id = ${batch.id}
         `);
         
         const matchedCount = parseInt(finexioResult.rows[0]?.matched_count || '0');
+        const finexioProcessed = parseInt(finexioResult.rows[0]?.total_processed || '0');
         batch.finexioMatchedCount = matchedCount;
         batch.finexioMatchPercentage = Math.round((matchedCount / batch.processedRecords) * 100);
+        batch.finexioMatchingProgress = finexioProcessed; // Actual progress count
         
-        // Get actual Mastercard enrichment count
+        // Get Google Address validation progress
+        const googleResult = await db.execute(sql`
+          SELECT 
+            COUNT(CASE WHEN google_address_validation_status IS NOT NULL THEN 1 END) as validated_count,
+            COUNT(CASE WHEN google_formatted_address IS NOT NULL THEN 1 END) as formatted_count
+          FROM payee_classifications
+          WHERE batch_id = ${batch.id}
+        `);
+        
+        const googleValidated = parseInt(googleResult.rows[0]?.validated_count || '0');
+        batch.googleAddressValidated = googleValidated;
+        batch.googleAddressProgress = googleValidated; // Progress is same as validated count
+        
+        // Get actual Mastercard enrichment progress
         const mastercardResult = await db.execute(sql`
           SELECT 
             COUNT(CASE WHEN mastercard_match_status = 'match' THEN 1 END) as matched_count,
-            COUNT(CASE WHEN mastercard_match_status IS NOT NULL THEN 1 END) as processed_count
+            COUNT(CASE WHEN mastercard_match_status IS NOT NULL THEN 1 END) as processed_count,
+            COUNT(CASE WHEN mastercard_business_name IS NOT NULL AND mastercard_business_name != 'None' THEN 1 END) as enriched_count
           FROM payee_classifications
           WHERE batch_id = ${batch.id}
         `);
         
         const mcMatchedCount = parseInt(mastercardResult.rows[0]?.matched_count || '0');
         const mcProcessedCount = parseInt(mastercardResult.rows[0]?.processed_count || '0');
+        const mcEnrichedCount = parseInt(mastercardResult.rows[0]?.enriched_count || '0');
         
-        // Update the batch with actual Mastercard counts
-        batch.mastercardActualEnriched = mcMatchedCount;
+        batch.mastercardActualEnriched = mcEnrichedCount;
         batch.mastercardEnrichmentProcessed = mcProcessedCount;
+        batch.mastercardEnrichmentProgress = mcProcessedCount; // Track actual processing progress
+        batch.mastercardEnrichmentTotal = batch.processedRecords;
+        
+        // Get Akkio prediction progress
+        const akkioResult = await db.execute(sql`
+          SELECT 
+            COUNT(CASE WHEN akkio_prediction_status = 'completed' THEN 1 END) as predicted_count,
+            COUNT(CASE WHEN akkio_prediction_status IS NOT NULL THEN 1 END) as processed_count
+          FROM payee_classifications
+          WHERE batch_id = ${batch.id}
+        `);
+        
+        const akkioPredicted = parseInt(akkioResult.rows[0]?.predicted_count || '0');
+        const akkioProcessed = parseInt(akkioResult.rows[0]?.processed_count || '0');
+        batch.akkioPredictionSuccessful = akkioPredicted;
+        batch.akkioPredictionProgress = akkioProcessed;
       }
     }
     
