@@ -250,6 +250,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPayeeClassification(classification: InsertPayeeClassification): Promise<PayeeClassification> {
+    // Import state validator
+    const { validateAndCorrectState } = await import('./utils/stateValidator');
+    
+    // Validate and correct the state before saving
+    if (classification.state) {
+      const correctedState = validateAndCorrectState(classification.state, classification.city);
+      if (correctedState !== classification.state) {
+        console.log(`📍 Auto-corrected state: "${classification.state}" → "${correctedState}"`);
+      }
+      classification.state = correctedState;
+    }
+    
     const [payeeClassification] = await db
       .insert(payeeClassifications)
       .values(classification)
@@ -258,9 +270,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPayeeClassifications(classifications: InsertPayeeClassification[]): Promise<PayeeClassification[]> {
+    // Import state validator
+    const { validateAndCorrectState } = await import('./utils/stateValidator');
+    
+    // Validate and correct states before saving
+    const correctedClassifications = classifications.map(classification => {
+      if (classification.state) {
+        const correctedState = validateAndCorrectState(classification.state, classification.city);
+        if (correctedState !== classification.state) {
+          console.log(`📍 Auto-corrected state: "${classification.state}" → "${correctedState}"`);
+        }
+        return { ...classification, state: correctedState };
+      }
+      return classification;
+    });
+    
     return await db
       .insert(payeeClassifications)
-      .values(classifications)
+      .values(correctedClassifications)
       .returning();
   }
 
@@ -270,6 +297,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updatePayeeClassification(id: number, updates: Partial<PayeeClassification>): Promise<PayeeClassification> {
+    // Import state validator
+    const { validateAndCorrectState } = await import('./utils/stateValidator');
+    
+    // Validate and correct the state if it's being updated
+    if (updates.state) {
+      const correctedState = validateAndCorrectState(updates.state, updates.city);
+      if (correctedState !== updates.state) {
+        console.log(`📍 Auto-corrected state during update: "${updates.state}" → "${correctedState}"`);
+      }
+      updates.state = correctedState;
+    }
+    
     const [classification] = await db
       .update(payeeClassifications)
       .set({ ...updates, updatedAt: new Date() })

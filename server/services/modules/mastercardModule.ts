@@ -82,16 +82,35 @@ class MastercardModule implements PipelineModule {
         });
       }
 
+      // Import state validator
+      const { validateAndCorrectState } = await import('../../utils/stateValidator');
+      
       // Prepare payee data for Mastercard enrichment
       // Use originalName for better Mastercard matching (preserves case and formatting)
-      const payeesForEnrichment = businessClassifications.map(c => ({
-        id: String(c.id), // Convert ID to string as expected by enrichBatch
-        name: c.originalName || c.cleanedName, // Prefer original name for better matching
-        address: c.address || undefined,
-        city: c.city || undefined,
-        state: c.state || undefined,
-        zipCode: c.zipCode || undefined
-      }));
+      const payeesForEnrichment = businessClassifications.map(c => {
+        // Validate and correct state before sending to Mastercard
+        let correctedState = c.state || undefined;
+        if (correctedState) {
+          const validated = validateAndCorrectState(correctedState, c.city);
+          if (validated !== correctedState) {
+            console.log(`📍 Mastercard: Auto-correcting state for ${c.originalName}: "${correctedState}" → "${validated}"`);
+            correctedState = validated;
+            // Also update the database record with corrected state
+            storage.updatePayeeClassification(c.id, { state: correctedState }).catch(err => 
+              console.error(`Failed to update state for record ${c.id}:`, err)
+            );
+          }
+        }
+        
+        return {
+          id: String(c.id), // Convert ID to string as expected by enrichBatch
+          name: c.originalName || c.cleanedName, // Prefer original name for better matching
+          address: c.address || undefined,
+          city: c.city || undefined,
+          state: correctedState,
+          zipCode: c.zipCode || undefined
+        };
+      });
 
       // Use the ASYNC service - submit and forget, worker handles polling
       const { mastercardAsyncService } = await import('../mastercardAsyncService');
