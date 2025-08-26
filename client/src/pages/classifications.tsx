@@ -15,6 +15,8 @@ export default function Classifications() {
 
   const { data: batches = [] } = useQuery<UploadBatch[]>({
     queryKey: ["/api/upload/batches"],
+    // Poll every 2 seconds for real-time updates
+    refetchInterval: 2000,
   });
 
   const { data: classifications = [] } = useQuery<PayeeClassification[]>({

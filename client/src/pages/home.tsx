@@ -154,7 +154,8 @@ export default function Home() {
 
   const { data: batches, isLoading, refetch: refetchBatches } = useQuery<UploadBatch[]>({
     queryKey: ["/api/upload/batches"],
-    // REMOVED: No polling - single customer can manually refresh
+    // Poll every 2 seconds for real-time updates
+    refetchInterval: 2000,
   });
 
   // REMOVED: No auto-updates - causing memory churn
