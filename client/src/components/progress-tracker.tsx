@@ -252,12 +252,9 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
 
       {/* Summary stats */}
       {phases.filter(p => p.status === "completed").length > 0 && (
-        <div className="border-t pt-3 flex justify-between text-xs text-gray-600">
+        <div className="border-t pt-3 text-xs text-gray-600">
           <span>
             {phases.filter(p => p.status === "completed").length} of {phases.length} phases complete
-          </span>
-          <span className="font-medium">
-            Total progress: {Math.round((phases.filter(p => p.status === "completed").length / phases.length) * 100)}%
           </span>
         </div>
       )}
