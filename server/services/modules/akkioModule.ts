@@ -26,9 +26,17 @@ class AkkioModule implements PipelineModule {
       // Check if Akkio predictions are enabled
       if (options.enableAkkio === false) {
         console.log('Akkio predictions disabled - skipping');
+        
+        // Get batch to get total records
+        const batch = await storage.getUploadBatchById(batchId);
+        const totalRecords = batch?.processedRecords || batch?.totalRecords || 0;
+        
         await storage.updateUploadBatch(batchId, {
           akkioPredictionStatus: 'skipped',
-          akkioPredictionCompletedAt: new Date()
+          akkioPredictionCompletedAt: new Date(),
+          akkioPredictionProgress: totalRecords,
+          akkioPredictionProcessed: totalRecords,
+          akkioPredictionTotal: totalRecords
         });
         return;
       }

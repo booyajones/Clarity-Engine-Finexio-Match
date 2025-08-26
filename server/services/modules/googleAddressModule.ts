@@ -33,6 +33,9 @@ class GoogleAddressModule implements PipelineModule {
       // Update status
       await storage.updateUploadBatch(batchId, {
         googleAddressStatus: 'processing',
+        googleAddressProgress: 0,
+        googleAddressProcessed: 0,
+        googleAddressTotal: 0,
         currentStep: 'Validating addresses',
         progressMessage: 'Running Google Address validation...'
       });
@@ -86,6 +89,10 @@ class GoogleAddressModule implements PipelineModule {
           // Update progress periodically
           if (processedCount % 10 === 0) {
             await storage.updateUploadBatch(batchId, {
+              googleAddressProgress: processedCount,
+              googleAddressProcessed: processedCount,
+              googleAddressTotal: classifications.length,
+              googleAddressValidated: validatedCount,
               progressMessage: `Validated ${validatedCount}/${processedCount} addresses...`
             });
           }
@@ -99,6 +106,10 @@ class GoogleAddressModule implements PipelineModule {
       await storage.updateUploadBatch(batchId, {
         googleAddressStatus: 'completed',
         googleAddressCompletedAt: new Date(),
+        googleAddressProgress: processedCount,
+        googleAddressProcessed: processedCount,
+        googleAddressTotal: classifications.length,
+        googleAddressValidated: validatedCount,
         currentStep: 'Address validation complete',
         progressMessage: `Validated ${validatedCount}/${processedCount} addresses`
       });

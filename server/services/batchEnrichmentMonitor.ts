@@ -205,6 +205,9 @@ class BatchEnrichmentMonitor {
       await db.update(uploadBatches)
         .set({ 
           finexioMatchingStatus: 'in_progress',
+          finexioMatchingTotal: 0,  // Will be updated once we get classifications
+          finexioMatchingProgress: 0,
+          finexioMatchingProcessed: 0,
           progressMessage: 'Starting Finexio supplier matching...',
           currentStep: 'Finexio: 0% complete'
         })
@@ -234,7 +237,9 @@ class BatchEnrichmentMonitor {
         await db.update(uploadBatches)
           .set({ 
             progressMessage: `Matching with Finexio suppliers... (${processedSoFar}/${classifications.length})`,
-            currentStep: `Finexio: ${progressPercent}% complete`
+            currentStep: `Finexio: ${progressPercent}% complete`,
+            finexioMatchingProgress: processedSoFar,
+            finexioMatchingProcessed: processedSoFar
           })
           .where(eq(uploadBatches.id, batchId));
         
@@ -295,7 +300,11 @@ class BatchEnrichmentMonitor {
           .set({ 
             progressMessage: `Matching with Finexio suppliers... (${processedAfter}/${classifications.length})`,
             currentStep: `Finexio: ${progressAfter}% complete`,
-            finexioMatchedCount: matchCount
+            finexioMatchingProgress: processedAfter,
+            finexioMatchingProcessed: processedAfter,
+            finexioMatchingTotal: classifications.length,
+            finexioMatchedCount: matchCount,
+            finexioMatchingMatched: matchCount
           })
           .where(eq(uploadBatches.id, batchId));
         
@@ -309,6 +318,10 @@ class BatchEnrichmentMonitor {
       await db.update(uploadBatches)
         .set({ 
           finexioMatchingStatus: 'completed',
+          finexioMatchingTotal: classifications.length,
+          finexioMatchingProcessed: classifications.length,
+          finexioMatchingProgress: classifications.length,
+          finexioMatchingMatched: matchCount,
           finexioMatchedCount: matchCount,
           finexioMatchingCompletedAt: new Date()
         })

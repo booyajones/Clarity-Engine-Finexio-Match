@@ -23,9 +23,17 @@ class MastercardModule implements PipelineModule {
       // Check if Mastercard enrichment is enabled
       if (options.enableMastercard === false) {
         console.log('Mastercard enrichment disabled - skipping');
+        
+        // Get batch to get total records
+        const batch = await storage.getUploadBatchById(batchId);
+        const totalRecords = batch?.processedRecords || batch?.totalRecords || 0;
+        
         await storage.updateUploadBatch(batchId, {
           mastercardEnrichmentStatus: 'skipped',
-          mastercardEnrichmentCompletedAt: new Date()
+          mastercardEnrichmentCompletedAt: new Date(),
+          mastercardEnrichmentProgress: totalRecords,
+          mastercardEnrichmentProcessed: totalRecords,
+          mastercardEnrichmentTotal: totalRecords
         });
         return;
       }
