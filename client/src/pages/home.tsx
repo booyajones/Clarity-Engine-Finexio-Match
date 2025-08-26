@@ -1694,10 +1694,20 @@ export default function Home() {
                   </div>
                   <ProgressTracker batch={{
                     ...batch,
+                    createdAt: batch.createdAt,
                     finexioMatchingStatus: (batch as any).finexioMatchingStatus,
-                    googleAddressStatus: (batch as any).googleAddressStatus,
+                    finexioMatchingProgress: (batch as any).finexioMatchingProgress,
+                    finexioMatchPercentage: (batch as any).finexioMatchPercentage,
+                    googleAddressStatus: (batch as any).googleAddressStatus, 
+                    googleAddressProgress: (batch as any).googleAddressProgress,
+                    googleAddressValidated: (batch as any).googleAddressValidated,
                     mastercardEnrichmentStatus: batch.mastercardEnrichmentStatus,
-                    akkioPredictionStatus: (batch as any).akkioPredictionStatus
+                    mastercardEnrichmentProgress: batch.mastercardEnrichmentProgress,
+                    mastercardActualEnriched: batch.mastercardActualEnriched,
+                    mastercardEnrichmentTotal: batch.mastercardEnrichmentTotal,
+                    akkioPredictionStatus: (batch as any).akkioPredictionStatus,
+                    akkioPredictionProgress: (batch as any).akkioPredictionProgress,
+                    akkioPredictionSuccessful: (batch as any).akkioPredictionSuccessful
                   }} />
                 </div>
               ))}
