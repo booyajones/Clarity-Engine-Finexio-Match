@@ -1,6 +1,9 @@
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle2, Loader2, Clock, ChevronRight, AlertCircle } from "lucide-react";
+import { CheckCircle2, Loader2, Clock, ChevronRight, AlertCircle, XCircle } from "lucide-react";
 import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 interface UploadBatch {
   id: number;
@@ -32,6 +35,14 @@ interface ProgressTrackerProps {
 
 export function ProgressTracker({ batch }: ProgressTrackerProps) {
   const [elapsedTime, setElapsedTime] = useState<string>("");
+  const queryClient = useQueryClient();
+  
+  const cancelJobMutation = useMutation({
+    mutationFn: () => apiRequest.post(`/api/upload/batch/${batch.id}/cancel`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/upload/batches'] });
+    }
+  });
 
   // Update elapsed time every second
   useEffect(() => {
@@ -157,8 +168,22 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
             </div>
           )}
         </div>
-        <div className="font-medium">
-          {activePhase.status === "in_progress" ? activePhase.name : "Processing"}
+        <div className="flex items-center gap-3">
+          <div className="font-medium">
+            {activePhase.status === "in_progress" ? activePhase.name : "Processing"}
+          </div>
+          {(batch.status === "processing" || batch.status === "enriching") && (
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => cancelJobMutation.mutate()}
+              disabled={cancelJobMutation.isPending}
+              className="h-7 text-xs"
+            >
+              <XCircle className="h-3 w-3 mr-1" />
+              {cancelJobMutation.isPending ? "Cancelling..." : "Cancel Job"}
+            </Button>
+          )}
         </div>
       </div>
 
