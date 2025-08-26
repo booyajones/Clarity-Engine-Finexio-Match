@@ -179,20 +179,24 @@ export class DatabaseStorage implements IStorage {
     for (const batch of batches) {
       if (batch.processedRecords > 0) {
         // Get Finexio matching progress and results
+        // Count records that have been processed for Finexio (either matched or attempted)
         const finexioResult = await db.execute(sql`
           SELECT 
-            COUNT(DISTINCT pm.classification_id) as matched_count,
-            COUNT(DISTINCT pc.id) as total_processed
+            COUNT(CASE WHEN pm.id IS NOT NULL OR pc.finexio_confidence IS NOT NULL THEN 1 END) as processed_count,
+            COUNT(CASE WHEN pm.finexio_match_score >= 85 THEN 1 END) as matched_count,
+            COUNT(*) as total_records
           FROM payee_classifications pc
-          LEFT JOIN payee_matches pm ON pm.classification_id = pc.id AND pm.finexio_match_score >= 85
+          LEFT JOIN payee_matches pm ON pm.classification_id = pc.id
           WHERE pc.batch_id = ${batch.id}
         `);
         
         const matchedCount = parseInt(finexioResult.rows[0]?.matched_count || '0');
-        const finexioProcessed = parseInt(finexioResult.rows[0]?.total_processed || '0');
+        const finexioProcessed = parseInt(finexioResult.rows[0]?.processed_count || '0');
+        const totalRecords = parseInt(finexioResult.rows[0]?.total_records || '0');
+        
         batch.finexioMatchedCount = matchedCount;
-        batch.finexioMatchPercentage = Math.round((matchedCount / batch.processedRecords) * 100);
-        batch.finexioMatchingProgress = finexioProcessed; // Actual progress count
+        batch.finexioMatchPercentage = totalRecords > 0 ? Math.round((matchedCount / totalRecords) * 100) : 0;
+        batch.finexioMatchingProgress = finexioProcessed; // Actual records processed through Finexio
         
         // Get Google Address validation progress
         const googleResult = await db.execute(sql`

@@ -68,11 +68,12 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
     {
       name: "Finexio Matching",
       key: "finexio",
-      status: batch.finexioMatchingStatus || "pending",
+      status: batch.finexioMatchingProgress >= batch.processedRecords ? "completed" :
+              batch.finexioMatchingProgress > 0 ? "in_progress" : "pending",
       current: batch.finexioMatchingProgress || 0,
-      total: batch.totalRecords,
-      percentage: batch.totalRecords > 0 ? 
-        Math.round((batch.finexioMatchingProgress || 0) / batch.totalRecords * 100) : 0,
+      total: batch.processedRecords || batch.totalRecords,
+      percentage: batch.processedRecords > 0 ? 
+        Math.round((batch.finexioMatchingProgress || 0) / batch.processedRecords * 100) : 0,
       matchRate: batch.finexioMatchPercentage,
       color: { bg: "bg-green-500", light: "bg-green-100", text: "text-green-700" },
       enabled: batch.finexioMatchingStatus !== "skipped"
@@ -80,11 +81,12 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
     {
       name: "Google Address",
       key: "google",
-      status: batch.googleAddressStatus || "pending",
+      status: batch.googleAddressProgress >= batch.processedRecords ? "completed" :
+              batch.googleAddressProgress > 0 ? "in_progress" : "pending",
       current: batch.googleAddressProgress || 0,
-      total: batch.totalRecords,
-      percentage: batch.totalRecords > 0 ? 
-        Math.round((batch.googleAddressProgress || 0) / batch.totalRecords * 100) : 0,
+      total: batch.processedRecords || batch.totalRecords,
+      percentage: batch.processedRecords > 0 ? 
+        Math.round((batch.googleAddressProgress || 0) / batch.processedRecords * 100) : 0,
       validated: batch.googleAddressValidated,
       color: { bg: "bg-indigo-500", light: "bg-indigo-100", text: "text-indigo-700" },
       enabled: batch.googleAddressStatus !== "skipped"
@@ -92,11 +94,12 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
     {
       name: "Mastercard",
       key: "mastercard",
-      status: batch.mastercardEnrichmentStatus || "pending",
+      status: batch.mastercardEnrichmentProgress >= batch.processedRecords ? "completed" :
+              batch.mastercardEnrichmentProgress > 0 ? "in_progress" : "pending",
       current: batch.mastercardEnrichmentProgress || 0,
-      total: batch.mastercardEnrichmentTotal || batch.totalRecords,
-      percentage: batch.totalRecords > 0 ? 
-        Math.round((batch.mastercardEnrichmentProgress || 0) / batch.totalRecords * 100) : 0,
+      total: batch.processedRecords || batch.totalRecords,
+      percentage: batch.processedRecords > 0 ? 
+        Math.round((batch.mastercardEnrichmentProgress || 0) / batch.processedRecords * 100) : 0,
       enriched: batch.mastercardActualEnriched,
       color: { bg: "bg-purple-500", light: "bg-purple-100", text: "text-purple-700" },
       enabled: batch.mastercardEnrichmentStatus !== "skipped"
@@ -104,11 +107,12 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
     {
       name: "Akkio ML",
       key: "akkio",
-      status: batch.akkioPredictionStatus || "pending",
+      status: batch.akkioPredictionProgress >= batch.processedRecords ? "completed" :
+              batch.akkioPredictionProgress > 0 ? "in_progress" : "pending",
       current: batch.akkioPredictionProgress || 0,
-      total: batch.totalRecords,
-      percentage: batch.totalRecords > 0 ? 
-        Math.round((batch.akkioPredictionProgress || 0) / batch.totalRecords * 100) : 0,
+      total: batch.processedRecords || batch.totalRecords,
+      percentage: batch.processedRecords > 0 ? 
+        Math.round((batch.akkioPredictionProgress || 0) / batch.processedRecords * 100) : 0,
       predicted: batch.akkioPredictionSuccessful,
       color: { bg: "bg-orange-500", light: "bg-orange-100", text: "text-orange-700" },
       enabled: batch.akkioPredictionStatus !== "skipped"
@@ -217,22 +221,21 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
 
                 {/* Progress bar for this phase */}
                 {(phase.status === "in_progress" || phase.status === "completed") && (
-                  <div className="relative">
+                  <div className="space-y-1">
                     <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                       <div 
                         className={`h-full transition-all duration-500 ${
                           phase.status === "completed" ? phase.color.bg : "bg-blue-500"
                         }`}
                         style={{ 
-                          width: phase.status === "completed" ? "100%" : `${phase.percentage}%` 
+                          width: `${phase.percentage}%` 
                         }}
                       />
                     </div>
-                    {phase.status === "in_progress" && (
-                      <span className="absolute -top-0.5 text-xs font-medium text-blue-600" 
-                            style={{ left: `${Math.min(phase.percentage, 90)}%` }}>
+                    {phase.status === "in_progress" && phase.percentage > 0 && (
+                      <div className="text-xs font-medium text-blue-600 text-right">
                         {phase.percentage}%
-                      </span>
+                      </div>
                     )}
                   </div>
                 )}
