@@ -35,25 +35,16 @@ async function reloadBigQueryData() {
     const dataset = 'SE_Enrichment';
     const table = 'supplier';
     
+    // Get ALL distinct records, no deduplication by name
     const query = `
-      WITH distinct_suppliers AS (
-        SELECT DISTINCT
-          Reference_ID,
-          Supplier_Name,
-          Payment_Method,
-          Delivery_Method,
-          ROW_NUMBER() OVER (PARTITION BY LOWER(Supplier_Name) ORDER BY Reference_ID) as rn
-        FROM \`finexiopoc.${dataset}.${table}\`
-        WHERE Supplier_Name IS NOT NULL
-          AND LENGTH(TRIM(Supplier_Name)) > 0
-      )
-      SELECT 
+      SELECT DISTINCT
         Reference_ID as payee_id,
         Supplier_Name as payee_name,
         Payment_Method as payment_method,
         Delivery_Method as delivery_method
-      FROM distinct_suppliers
-      WHERE rn = 1
+      FROM \`finexiopoc.${dataset}.${table}\`
+      WHERE Supplier_Name IS NOT NULL
+        AND LENGTH(TRIM(Supplier_Name)) > 0
       ORDER BY payee_name ASC
     `;
     
