@@ -38,22 +38,23 @@ async function reloadBigQueryData() {
     const query = `
       WITH distinct_suppliers AS (
         SELECT DISTINCT
-          id,
-          name,
-          payment_type_c,
-          ROW_NUMBER() OVER (PARTITION BY LOWER(name) ORDER BY id) as rn
+          Reference_ID,
+          Supplier_Name,
+          Payment_Method,
+          Delivery_Method,
+          ROW_NUMBER() OVER (PARTITION BY LOWER(Supplier_Name) ORDER BY Reference_ID) as rn
         FROM \`finexiopoc.${dataset}.${table}\`
-        WHERE COALESCE(is_deleted, false) = false
-          AND name IS NOT NULL
-          AND LENGTH(TRIM(name)) > 0
+        WHERE Supplier_Name IS NOT NULL
+          AND LENGTH(TRIM(Supplier_Name)) > 0
       )
       SELECT 
-        id as payee_id,
-        name as payee_name,
-        payment_type_c as payment_method
+        Reference_ID as payee_id,
+        Supplier_Name as payee_name,
+        Payment_Method as payment_method,
+        Delivery_Method as delivery_method
       FROM distinct_suppliers
       WHERE rn = 1
-      ORDER BY name ASC
+      ORDER BY payee_name ASC
     `;
     
     console.log('📥 Fetching reduced dataset from BigQuery...');
@@ -76,15 +77,18 @@ async function reloadBigQueryData() {
     for (let i = 0; i < rows.length; i += batchSize) {
       const batch = rows.slice(i, i + batchSize);
       
-      // Build bulk insert values
+      // Build bulk insert values with unique IDs
       const values = [];
       const placeholders = [];
       let paramIndex = 1;
       
-      for (const supplier of batch) {
+      for (let j = 0; j < batch.length; j++) {
+        const supplier = batch[j];
+        const uniqueId = `SUP_${i + j}_${Date.now()}`; // Generate unique ID
+        
         placeholders.push(`($${paramIndex}, $${paramIndex+1}, $${paramIndex+2}, $${paramIndex+3})`);
         values.push(
-          supplier.payee_id,
+          uniqueId, // Use unique ID instead of Reference_ID
           supplier.payee_name,
           supplier.payment_method || null,
           new Date()
@@ -94,12 +98,12 @@ async function reloadBigQueryData() {
       
       // Execute bulk insert
       const insertQuery = `
-        INSERT INTO cached_suppliers (payee_id, payee_name, payment_method_default, created_at)
+        INSERT INTO cached_suppliers (payee_id, payee_name, payment_type, created_at)
         VALUES ${placeholders.join(', ')}
         ON CONFLICT (payee_id) DO UPDATE SET
           payee_name = EXCLUDED.payee_name,
-          payment_method_default = EXCLUDED.payment_method_default,
-          updated_at = NOW()
+          payment_type = EXCLUDED.payment_type,
+          last_updated = NOW()
       `;
       
       await pool.query(insertQuery, values.flat());
@@ -137,9 +141,9 @@ async function reloadBigQueryData() {
     `);
     
     await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_cached_suppliers_payment_method 
-      ON cached_suppliers(payment_method_default)
-      WHERE payment_method_default IS NOT NULL
+      CREATE INDEX IF NOT EXISTS idx_cached_suppliers_payment_type 
+      ON cached_suppliers(payment_type)
+      WHERE payment_type IS NOT NULL
     `);
     
     console.log('✅ Indexes created successfully');

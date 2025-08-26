@@ -3,10 +3,11 @@
 ## Overview
 Clarity Engine 5 is an AI-powered web application for finance and accounting professionals. It transforms unstructured payee data into organized, actionable insights by intelligently classifying payees (Individual, Business, Government) and assigning SIC codes with confidence scores. The platform is enhanced with Mastercard Merchant Match Tool (MMT) API integration for comprehensive business enrichment, aiming to provide a sophisticated tool for data transformation and analysis in financial contexts. Key capabilities include smart classification, intuitive user experience, robust data management, and reliable job processing. The system has achieved enterprise production readiness, demonstrating high accuracy, scalability, and robust error handling across various scenarios.
 
-### Recent Updates (January 25, 2025)
-- **Fixed Google Address Module Registration**: Enabled Google Address module and Akkio module in pipeline orchestrator for complete functionality
-- **All Enrichment Services Active**: Classification, Finexio, Google Address, Mastercard, and Akkio modules now properly registered and available
-- **Fixed Mastercard API Integration**: Extracted private key from P12 certificate, configured for production environment, fixed searchRequestId format to be alphanumeric only
+### Recent Updates (January 26, 2025)
+- **Fixed Finexio Matching Issues**: Resolved stuck processing by loading 96,254 suppliers from BigQuery FinexioPOC project
+- **BigQuery Integration**: Connected to FinexioPOC project's SE_Enrichment.supplier table with proper service account credentials
+- **Cancel Job Functionality**: Added cancel button to progress tracker for stopping stuck processing jobs
+- **Supplier Cache Restored**: Loaded comprehensive supplier database with payment method distribution (PrintedCheck: 57K, ACH: 23K, Card: 16K, Wire: 61)
 
 ## User Preferences
 - **Communication style**: Simple, everyday language
