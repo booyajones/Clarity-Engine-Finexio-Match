@@ -25,55 +25,78 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
     const isEnriching = batch.status === "enriching" || 
       (batch.processedRecords === batch.totalRecords && batch.status === "processing");
     
-    if (!isEnriching && batch.status === "processing") {
-      // Classification phase only
+    // If still in classification phase only
+    if (!isEnriching && batch.status === "processing" && batch.processedRecords < batch.totalRecords) {
+      // Classification is the first 25% of total progress
       return batch.totalRecords > 0 
-        ? (batch.processedRecords / batch.totalRecords) * 100 
+        ? (batch.processedRecords / batch.totalRecords) * 25 
         : 0;
     }
     
-    // Calculate progress across all phases
-    let totalPhases = 1; // Classification always counts
-    let completedPhases = 0;
-    let currentPhaseProgress = 0;
+    // Calculate progress across all phases with proper weighting
+    let totalProgress = 0;
+    let activeEnrichmentPhases = 0;
     
-    // Classification phase (25% of total)
+    // Classification phase (always 25% of total)
     if (batch.processedRecords === batch.totalRecords) {
-      completedPhases += 1;
+      totalProgress += 25; // Classification complete = 25%
     } else {
-      currentPhaseProgress = (batch.processedRecords / batch.totalRecords) * 0.25;
+      totalProgress += (batch.processedRecords / batch.totalRecords) * 25;
     }
     
-    // Count enabled enrichment phases
-    if (batch.finexioMatchingStatus !== "skipped" && batch.finexioMatchingStatus !== undefined) {
-      totalPhases++;
-      if (batch.finexioMatchingStatus === "completed") completedPhases++;
-      else if (batch.finexioMatchingStatus === "in_progress") currentPhaseProgress += 0.1875; // Half of 25%
+    // Count active enrichment phases (excluding skipped ones)
+    const enrichmentPhases = [];
+    
+    if (batch.finexioMatchingStatus && batch.finexioMatchingStatus !== "skipped") {
+      enrichmentPhases.push({
+        status: batch.finexioMatchingStatus,
+        progress: batch.finexioMatchingStatus === "completed" ? 100 : 
+                  batch.finexioMatchingStatus === "in_progress" ? 50 : 0
+      });
+      activeEnrichmentPhases++;
     }
     
-    if (batch.googleAddressStatus !== "skipped" && batch.googleAddressStatus !== undefined) {
-      totalPhases++;
-      if (batch.googleAddressStatus === "completed") completedPhases++;
-      else if (batch.googleAddressStatus === "in_progress") currentPhaseProgress += 0.1875;
+    if (batch.googleAddressStatus && batch.googleAddressStatus !== "skipped") {
+      enrichmentPhases.push({
+        status: batch.googleAddressStatus,
+        progress: batch.googleAddressStatus === "completed" ? 100 : 
+                  batch.googleAddressStatus === "in_progress" ? 50 : 0
+      });
+      activeEnrichmentPhases++;
     }
     
-    if (batch.mastercardEnrichmentStatus !== "skipped" && batch.mastercardEnrichmentStatus !== undefined) {
-      totalPhases++;
-      if (batch.mastercardEnrichmentStatus === "completed") completedPhases++;
-      else if (batch.mastercardEnrichmentStatus === "in_progress") currentPhaseProgress += 0.1875;
+    if (batch.mastercardEnrichmentStatus && batch.mastercardEnrichmentStatus !== "skipped") {
+      enrichmentPhases.push({
+        status: batch.mastercardEnrichmentStatus,
+        progress: batch.mastercardEnrichmentStatus === "completed" ? 100 : 
+                  batch.mastercardEnrichmentStatus === "in_progress" ? 50 : 0
+      });
+      activeEnrichmentPhases++;
     }
     
-    if (batch.akkioPredictionStatus !== "skipped" && batch.akkioPredictionStatus !== undefined) {
-      totalPhases++;
-      if (batch.akkioPredictionStatus === "completed") completedPhases++;
-      else if (batch.akkioPredictionStatus === "in_progress") currentPhaseProgress += 0.1875;
+    if (batch.akkioPredictionStatus && batch.akkioPredictionStatus !== "skipped") {
+      enrichmentPhases.push({
+        status: batch.akkioPredictionStatus,
+        progress: batch.akkioPredictionStatus === "completed" ? 100 : 
+                  batch.akkioPredictionStatus === "in_progress" ? 50 : 0
+      });
+      activeEnrichmentPhases++;
     }
     
-    // Calculate overall percentage
-    const baseProgress = (completedPhases / totalPhases) * 100;
-    const additionalProgress = (currentPhaseProgress / totalPhases) * 100;
+    // If there are no enrichment phases, classification is 100% of the work
+    if (activeEnrichmentPhases === 0) {
+      return (batch.processedRecords / batch.totalRecords) * 100;
+    }
     
-    return Math.min(baseProgress + additionalProgress, 100);
+    // Each enrichment phase gets an equal share of the remaining 75%
+    const enrichmentWeight = 75 / activeEnrichmentPhases;
+    
+    // Add progress for each enrichment phase
+    enrichmentPhases.forEach(phase => {
+      totalProgress += (phase.progress / 100) * enrichmentWeight;
+    });
+    
+    return Math.min(Math.round(totalProgress), 100);
   };
   
   // Get current phase description
