@@ -23,17 +23,17 @@ async function reloadBigQueryData() {
     console.log('✅ Cache cleared');
     console.log('');
     
-    // Initialize BigQuery
-    console.log('📡 Connecting to BigQuery...');
+    // Initialize BigQuery with FinexioPOC project
+    console.log('📡 Connecting to BigQuery (FinexioPOC)...');
     const bigquery = new BigQuery({
-      projectId: process.env.BIGQUERY_PROJECT_ID || 'finexiopoc',
+      projectId: 'finexiopoc',
       credentials: process.env.BIGQUERY_CREDENTIALS ? 
         JSON.parse(process.env.BIGQUERY_CREDENTIALS) : undefined
     });
     
-    // Query for the reduced dataset
-    const dataset = process.env.BIGQUERY_DATASET || 'SE_Enrichment';
-    const table = process.env.BIGQUERY_TABLE || 'supplier';
+    // Use the SE_Enrichment.supplier table (118K records)
+    const dataset = 'SE_Enrichment';
+    const table = 'supplier';
     
     const query = `
       WITH distinct_suppliers AS (
@@ -42,7 +42,7 @@ async function reloadBigQueryData() {
           name,
           payment_type_c,
           ROW_NUMBER() OVER (PARTITION BY LOWER(name) ORDER BY id) as rn
-        FROM \`${process.env.BIGQUERY_PROJECT_ID || 'finexiopoc'}.${dataset}.${table}\`
+        FROM \`finexiopoc.${dataset}.${table}\`
         WHERE COALESCE(is_deleted, false) = false
           AND name IS NOT NULL
           AND LENGTH(TRIM(name)) > 0
