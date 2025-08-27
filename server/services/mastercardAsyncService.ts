@@ -303,7 +303,14 @@ export class MastercardAsyncService {
       if (!results || !results.results || results.results.length === 0) {
         console.log(`ℹ️ No results found for search ${searchId} - marking records as no match`);
 
-        for (const [payeeId, searchRequestId] of Object.entries(searchIdMapping)) {
+        // FIXED: searchIdMapping is { searchRequestId: payeeId }, so iterate correctly
+        for (const [searchRequestId, payeeId] of Object.entries(searchIdMapping)) {
+          const payeeIdNum = parseInt(payeeId);
+          if (isNaN(payeeIdNum)) {
+            console.error(`❌ Invalid payee ID (not a number): ${payeeId}`);
+            continue;
+          }
+          
           await db
             .update(payeeClassifications)
             .set({
@@ -311,7 +318,7 @@ export class MastercardAsyncService {
               mastercardEnrichmentDate: new Date(),
               mastercardSource: 'Mastercard Track API - No Match Found'
             })
-            .where(eq(payeeClassifications.id, parseInt(payeeId)));
+            .where(eq(payeeClassifications.id, payeeIdNum));
 
           console.log(`📝 Marked payee ${payeeId} as no match`);
         }
@@ -328,6 +335,14 @@ export class MastercardAsyncService {
 
       // Create a set to track which payees we've processed
       const processedPayees = new Set<string>();
+
+      // Log the full results structure to debug
+      console.log(`📦 Mastercard results structure:`, {
+        resultsCount: results.results?.length || 0,
+        firstResult: results.results?.[0] ? Object.keys(results.results[0]) : 'No results',
+        searchIdMappingKeys: Object.keys(searchIdMapping).slice(0, 3),
+        searchIdMappingValues: Object.values(searchIdMapping).slice(0, 3)
+      });
 
       for (const result of results.results) {
         try {
