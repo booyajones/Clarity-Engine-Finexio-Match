@@ -1,5 +1,5 @@
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle2, Loader2, Clock, ChevronRight, AlertCircle, XCircle } from "lucide-react";
+import { CheckCircle2, Loader2, Clock, ChevronRight, AlertCircle, XCircle, Info } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -35,6 +35,7 @@ interface ProgressTrackerProps {
 
 export function ProgressTracker({ batch }: ProgressTrackerProps) {
   const [elapsedTime, setElapsedTime] = useState<string>("");
+  const [pollingCounter, setPollingCounter] = useState(0);
   const queryClient = useQueryClient();
   
   const cancelJobMutation = useMutation({
@@ -44,7 +45,7 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
     }
   });
 
-  // Update elapsed time every second
+  // Update elapsed time and polling counter every second
   useEffect(() => {
     if (!batch.createdAt || batch.status === "completed" || batch.status === "failed") return;
 
@@ -52,6 +53,9 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
       const start = new Date(batch.createdAt!).getTime();
       const now = Date.now();
       const elapsed = now - start;
+      
+      // Update polling counter for Mastercard
+      setPollingCounter(prev => prev + 1);
       
       const minutes = Math.floor(elapsed / 60000);
       const seconds = Math.floor((elapsed % 60000) / 1000);
@@ -268,6 +272,49 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
                 {/* Additional details for active phase */}
                 {phase.status === "in_progress" && batch.progressMessage && (
                   <p className="text-xs text-gray-500 mt-1">{batch.progressMessage}</p>
+                )}
+                
+                {/* Special messaging for Mastercard polling */}
+                {phase.key === "mastercard" && phase.status === "in_progress" && phase.current === 0 && (
+                  <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-md">
+                    <div className="flex items-start gap-2">
+                      <Info className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                      <div className="text-xs space-y-1">
+                        <p className="font-medium text-amber-900">
+                          Waiting for Mastercard API Response
+                        </p>
+                        <p className="text-amber-700">
+                          Your records have been submitted to Mastercard's servers. Processing typically takes 10-20 minutes.
+                        </p>
+                        <div className="flex items-center gap-1 text-amber-600">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <span>
+                            Checking status... (checked {Math.floor(pollingCounter / 5)} times, next check in {5 - (pollingCounter % 5)}s)
+                          </span>
+                        </div>
+                        <div className="text-xs text-amber-600">
+                          ⚡ This is normal - Mastercard processes large batches asynchronously
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Show when Mastercard is actually processing results */}
+                {phase.key === "mastercard" && phase.status === "in_progress" && phase.current > 0 && (
+                  <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md">
+                    <div className="flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <div className="text-xs space-y-1">
+                        <p className="font-medium text-green-900">
+                          Receiving Results from Mastercard
+                        </p>
+                        <p className="text-green-700">
+                          Processing {phase.current} of {phase.total} records...
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
