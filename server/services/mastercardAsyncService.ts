@@ -164,7 +164,12 @@ export class MastercardAsyncService {
             
             // For auth errors, mark records as skipped but continue processing
             for (const payee of batch) {
-              await this.markPayeeAsSkipped(payee.id, 'Mastercard authentication error - enrichment skipped');
+              const payeeIdNum = parseInt(payee.id);
+              if (!isNaN(payeeIdNum)) {
+                await this.markPayeeAsSkipped(payeeIdNum, 'Mastercard authentication error - enrichment skipped');
+              } else {
+                console.error(`❌ Invalid payee ID (not a number) when skipping: ${payee.id}`);
+              }
             }
             
             console.log(`⏭️ Skipping Mastercard for ${batch.length} records due to authentication error`);
@@ -194,7 +199,12 @@ export class MastercardAsyncService {
             // Non-retryable error - skip enrichment but don't fail entire process
             console.error(`❌ Non-retryable Mastercard error: ${error.message}`);
             for (const payee of batch) {
-              await this.markPayeeAsSkipped(payee.id, `Mastercard error: ${error.message}`);
+              const payeeIdNum = parseInt(payee.id);
+              if (!isNaN(payeeIdNum)) {
+                await this.markPayeeAsSkipped(payeeIdNum, `Mastercard error: ${error.message}`);
+              } else {
+                console.error(`❌ Invalid payee ID (not a number) when skipping: ${payee.id}`);
+              }
             }
             console.log(`⏭️ Skipping Mastercard for ${batch.length} records (non-retryable error)`);
           }
@@ -332,14 +342,21 @@ export class MastercardAsyncService {
             continue;
           }
 
-          // Find the payee ID from the search mapping
-          const payeeId = Object.keys(searchIdMapping).find(key => 
-            searchIdMapping[key] === searchRequestId
-          );
+          // Get the payee ID from the search mapping
+          // FIXED: searchIdMapping structure is { searchRequestId: payeeId }
+          // So we need to get the value, not find the key
+          const payeeId = searchIdMapping[searchRequestId];
 
           if (!payeeId) {
             console.error(`❌ No payee ID found for searchRequestId: ${searchRequestId}`);
             console.error(`Available mappings:`, Object.entries(searchIdMapping));
+            continue;
+          }
+
+          // Validate payeeId is a valid number
+          const payeeIdNum = parseInt(payeeId);
+          if (isNaN(payeeIdNum)) {
+            console.error(`❌ Invalid payee ID (not a number): ${payeeId} for searchRequestId: ${searchRequestId}`);
             continue;
           }
 
@@ -448,7 +465,7 @@ export class MastercardAsyncService {
           const updateResult = await db
             .update(payeeClassifications)
             .set(enrichmentData)
-            .where(eq(payeeClassifications.id, parseInt(payeeId)));
+            .where(eq(payeeClassifications.id, payeeIdNum));
 
           console.log(`📝 Updated payee ${payeeId} with status: ${enrichmentData.mastercardMatchStatus}`);
 
@@ -458,9 +475,17 @@ export class MastercardAsyncService {
       }
 
       // Handle any payees in the mapping that didn't get results (mark as no match)
-      for (const [payeeId, searchRequestId] of Object.entries(searchIdMapping)) {
+      // FIXED: searchIdMapping is { searchRequestId: payeeId }, so iterate correctly
+      for (const [searchRequestId, payeeId] of Object.entries(searchIdMapping)) {
         if (!processedPayees.has(payeeId)) {
           console.log(`⚠️ Payee ${payeeId} (${searchRequestId}) not found in results - marking as no match`);
+
+          // Validate payeeId before using it
+          const payeeIdNum = parseInt(payeeId);
+          if (isNaN(payeeIdNum)) {
+            console.error(`❌ Invalid payee ID (not a number) in unprocessed loop: ${payeeId}`);
+            continue;
+          }
 
           await db
             .update(payeeClassifications)
@@ -469,7 +494,7 @@ export class MastercardAsyncService {
               mastercardEnrichmentDate: new Date(),
               mastercardSource: 'Mastercard Track API - Not in Results'
             })
-            .where(eq(payeeClassifications.id, parseInt(payeeId)));
+            .where(eq(payeeClassifications.id, payeeIdNum));
 
           noMatchCount++;
         }
