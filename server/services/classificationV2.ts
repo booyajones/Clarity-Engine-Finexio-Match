@@ -536,21 +536,27 @@ export class OptimizedClassificationService {
       // Wait for all enrichment processes to complete
       Promise.all(enrichmentPromises)
         .then(async () => {
-          // After all enrichments complete, start Akkio predictions as the final step
-          console.log(`All enrichments completed for batch ${batchId}, starting Akkio predictions`);
-          
-          // Start Akkio predictions - this will mark batch as completed when done
-          try {
-            await this.startAkkioPredictions(batchId);
-          } catch (error) {
-            console.error('Akkio predictions failed, marking batch as completed anyway:', error);
-            // If Akkio fails, still mark batch as completed since main processing is done
-            await storage.updateUploadBatch(batchId, {
-              status: "completed",
-              completedAt: new Date(),
-              currentStep: "Processing complete",
-              progressMessage: `Processing completed with Akkio unavailable. Classification, Finexio matching, and Mastercard enrichment done.`
-            });
+          // After all enrichments complete, start Akkio predictions as the final step (if enabled)
+          if (this.matchingOptions?.enableAkkio) {
+            console.log(`All enrichments completed for batch ${batchId}, starting Akkio predictions`);
+            
+            // Start Akkio predictions - this will mark batch as completed when done
+            try {
+              await this.startAkkioPredictions(batchId);
+            } catch (error) {
+              console.error('Akkio predictions failed, marking batch as completed anyway:', error);
+              // If Akkio fails, still mark batch as completed since main processing is done
+              await storage.updateUploadBatch(batchId, {
+                status: "completed",
+                completedAt: new Date(),
+                currentStep: "Processing complete",
+                progressMessage: `Processing completed with Akkio unavailable. Classification, Finexio matching, and Mastercard enrichment done.`
+              });
+            }
+          } else {
+            console.log(`All enrichments completed for batch ${batchId}, Akkio is disabled - marking batch as complete`);
+            // Akkio is disabled, mark batch as completed after enrichments
+            await this.checkAndUpdateBatchCompletion(batchId);
           }
         })
         .catch(async (error) => {
