@@ -18,6 +18,10 @@ Clarity Engine 5 is an AI-powered web application for finance and accounting pro
   - Optimized database queries: single query instead of multiple, better indexes
   - Added early exit strategies for high confidence matches
   - Performance metrics: ~100+ records/second (vs previous ~5-10 records/second)
+- **Fixed Akkio Module Selection Bug**: 
+  - Akkio now only runs when explicitly selected by user in the UI
+  - Fixed progress tracker displaying incorrect "0/400" when Akkio is skipped
+  - When modules are skipped, progress numbers properly reflect completion
 
 ## User Preferences
 - **Communication style**: Simple, everyday language

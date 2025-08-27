@@ -21,11 +21,15 @@ class AkkioModule implements PipelineModule {
 
   async execute(batchId: number, options: any = {}): Promise<void> {
     console.log(`🤖 Akkio Module: Starting for batch ${batchId}`);
+    console.log(`   Akkio options received:`, options);
     
     try {
       // Check if Akkio predictions are enabled
-      if (options.enableAkkio === false) {
-        console.log('Akkio predictions disabled - skipping');
+      // Default to false - Akkio must be explicitly enabled
+      const isEnabled = options.enabled === true || options.enableAkkio === true;
+      
+      if (!isEnabled) {
+        console.log('Akkio predictions not explicitly enabled - skipping');
         
         // Get batch to get total records
         const batch = await storage.getUploadBatchById(batchId);
@@ -40,6 +44,8 @@ class AkkioModule implements PipelineModule {
         });
         return;
       }
+      
+      console.log('Akkio predictions enabled - proceeding with predictions');
 
       // Update status
       await storage.updateUploadBatch(batchId, {

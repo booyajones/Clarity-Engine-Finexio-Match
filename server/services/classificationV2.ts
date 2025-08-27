@@ -1589,9 +1589,16 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
       if (this.matchingOptions.enableAkkio !== true) {
         console.log(`Akkio predictions disabled for batch ${batchId}`);
         
+        // Get batch to get total records for proper progress display
+        const batch = await storage.getUploadBatch(batchId);
+        const totalRecords = batch?.processedRecords || batch?.totalRecords || 0;
+        
         await storage.updateUploadBatch(batchId, {
           akkioPredictionStatus: "skipped",
-          akkioPredictionCompletedAt: new Date()
+          akkioPredictionCompletedAt: new Date(),
+          akkioPredictionProgress: totalRecords,
+          akkioPredictionProcessed: totalRecords,
+          akkioPredictionTotal: totalRecords
         });
         
         // Wait for all enrichment to complete before marking batch as completed
@@ -1614,9 +1621,16 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
       if (!process.env.AKKIO_API_KEY) {
         console.log('Akkio API not configured, skipping predictions');
         
+        // Get batch to get total records for proper progress display
+        const batch = await storage.getUploadBatch(batchId);
+        const totalRecords = batch?.processedRecords || batch?.totalRecords || 0;
+        
         await storage.updateUploadBatch(batchId, {
           akkioPredictionStatus: "skipped",
-          akkioPredictionCompletedAt: new Date()
+          akkioPredictionCompletedAt: new Date(),
+          akkioPredictionProgress: totalRecords,
+          akkioPredictionProcessed: totalRecords,
+          akkioPredictionTotal: totalRecords
         });
         
         // Wait for all enrichment to complete before marking batch as completed
@@ -1641,9 +1655,16 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
       if (!activeModel) {
         console.log('No active Akkio model found, skipping predictions');
         
+        // Get batch to get total records for proper progress display
+        const batch = await storage.getUploadBatch(batchId);
+        const totalRecords = batch?.processedRecords || batch?.totalRecords || 0;
+        
         await storage.updateUploadBatch(batchId, {
           akkioPredictionStatus: "skipped",
-          akkioPredictionCompletedAt: new Date()
+          akkioPredictionCompletedAt: new Date(),
+          akkioPredictionProgress: totalRecords,
+          akkioPredictionProcessed: totalRecords,
+          akkioPredictionTotal: totalRecords
         });
         
         // Wait for all enrichment to complete before marking batch as completed
@@ -1670,9 +1691,16 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
       if (classificationsForPrediction.length === 0) {
         console.log('No classifications ready for Akkio predictions');
         
+        // Get batch to get total records for proper progress display
+        const batch = await storage.getUploadBatch(batchId);
+        const totalRecords = batch?.processedRecords || batch?.totalRecords || 0;
+        
         await storage.updateUploadBatch(batchId, {
           akkioPredictionStatus: "skipped",
-          akkioPredictionCompletedAt: new Date()
+          akkioPredictionCompletedAt: new Date(),
+          akkioPredictionProgress: totalRecords,
+          akkioPredictionProcessed: totalRecords,
+          akkioPredictionTotal: totalRecords
         });
         
         // Wait for all enrichment to complete
