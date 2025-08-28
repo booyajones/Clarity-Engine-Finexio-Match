@@ -2338,6 +2338,8 @@ Also provide a SIC code and description if applicable. Respond in JSON format:
       let count = 0;
       if (source === 'bigquery') {
         count = await smartCache.syncFromBigQuery();
+      } else if (source === 'comprehensive') {
+        count = await smartCache.loadComprehensiveData();
       } else {
         count = await smartCache.loadSampleData();
       }
