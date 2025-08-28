@@ -107,6 +107,17 @@ class FinexioModule implements PipelineModule {
               }
             } catch (error) {
               console.error(`Error matching payee ${classification.id}:`, error);
+              
+              // CRITICAL: Always update the database even on errors to prevent stuck jobs
+              try {
+                await storage.updatePayeeClassification(classification.id, {
+                  finexioConfidence: 0, // Mark as processed but no match
+                  finexioMatchReasoning: `Error during matching: ${error.message || 'Unknown error'}`
+                });
+              } catch (updateError) {
+                console.error(`Failed to update error status for payee ${classification.id}:`, updateError);
+              }
+              
               // Return error but don't fail the whole chunk
               return { matched: false, error: true };
             }
@@ -168,9 +179,29 @@ class FinexioModule implements PipelineModule {
       await storage.updateUploadBatch(batchId, {
         finexioMatchingStatus: 'completed',
         finexioMatchingCompletedAt: new Date(),
+        finexioMatchingProgress: 100,
+        finexioMatchedCount: matchedCount,
+        finexioMatchingProcessed: processedCount,
+        finexioMatchingMatched: matchedCount,
         currentStep: 'Finexio matching complete',
         progressMessage: `Matched ${matchedCount}/${processedCount} payees with Finexio suppliers`
       });
+      
+      // CRITICAL: Check if batch should be marked as completed
+      // If no other modules are configured to run after Finexio, mark as completed
+      const batch = await storage.getUploadBatch(batchId);
+      if (batch && 
+          batch.googleAddressStatus === 'skipped' && 
+          batch.mastercardEnrichmentStatus === 'skipped' && 
+          batch.akkioPredictionStatus === 'skipped') {
+        // All enrichment modules are skipped, mark batch as completed
+        await storage.updateUploadBatch(batchId, {
+          status: 'completed',
+          completedAt: new Date(),
+          progressMessage: 'Processing complete!'
+        });
+        console.log(`✅ Batch ${batchId} marked as COMPLETED (all enrichment skipped)`);
+      }
 
       console.log(`✅ Finexio Module: Completed for batch ${batchId} (${matchedCount}/${processedCount} matched)`);
     } catch (error) {
