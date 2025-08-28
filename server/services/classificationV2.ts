@@ -148,18 +148,34 @@ export class OptimizedClassificationService {
       
       console.log(`About to create stream for ${ext} file...`);
       let payeeStream: Readable;
+      let csvFilePath: string;
       
       if (ext === '.xlsx' || ext === '.xls') {
         console.log(`📊 Converting Excel to CSV for processing...`);
         // Convert Excel to CSV first, then process as CSV
-        const csvFilePath = await this.convertExcelToCsv(filePath);
-        payeeStream = this.createCsvStream(csvFilePath, payeeColumn, batchId);
+        csvFilePath = await this.convertExcelToCsv(filePath);
       } else {
-        console.log(`📊 Creating CSV stream for ${ext} file (or no extension)...`);
-        payeeStream = this.createCsvStream(filePath, payeeColumn, batchId);
+        console.log(`📊 Processing CSV file directly...`);
+        csvFilePath = filePath;
       }
       
-      console.log(`Stream created, starting processPayeeStream...`);
+      // Count total rows first for proper progress tracking
+      console.log(`📊 Counting total rows in file...`);
+      const totalRows = await this.countTotalRows(csvFilePath);
+      console.log(`📊 Total rows to process: ${totalRows}`);
+      
+      // Set the total upfront so denominator stays fixed throughout processing
+      await storage.updateUploadBatch(batchId, {
+        status: "processing",
+        totalRecords: totalRows,
+        processedRecords: 0,
+        currentStep: "Starting classification",
+        progressMessage: `Processing ${totalRows} records...`
+      });
+      
+      // Now create the stream and process
+      payeeStream = this.createCsvStream(csvFilePath, payeeColumn, batchId);
+      console.log(`Stream created, starting processPayeeStream with fixed total of ${totalRows} records...`);
       await this.processPayeeStream(batchId, payeeStream, abortController.signal);
     } catch (error) {
       console.error(`Error processing file for batch ${batchId}:`, error);
@@ -183,6 +199,18 @@ export class OptimizedClassificationService {
         console.error(`Failed to delete files:`, e);
       }
     }
+  }
+  
+  private async countTotalRows(filePath: string): Promise<number> {
+    return new Promise((resolve, reject) => {
+      let count = 0;
+      
+      fs.createReadStream(filePath)
+        .pipe(csv({ skipLinesWithError: false, strict: false }))
+        .on('data', () => count++)
+        .on('end', () => resolve(count))
+        .on('error', reject);
+    });
   }
   
   private createCsvStream(filePath: string, payeeColumn?: string, batchId?: number): Readable {
@@ -417,22 +445,18 @@ export class OptimizedClassificationService {
     const MAX_CONCURRENT = 16; // Aligned with database pool
     let buffer: PayeeData[] = [];
     let totalProcessed = 0;
-    let totalRecords = 0;
     let startTime = Date.now();
     
     console.log(`processPayeeStream started for batch ${batchId}`);
     
-    // Initialize batch status
-    await storage.updateUploadBatch(batchId, {
-      status: "processing",
-      currentStep: "Starting classification",
-      progressMessage: "Initializing high-speed processing...",
-      totalRecords: 0, // Will be updated as records are counted
-      processedRecords: 0
-    });
+    // Get the batch to retrieve the already-set totalRecords
+    const batch = await storage.getUploadBatch(batchId);
+    const totalRecords = batch?.totalRecords || 0;
+    console.log(`Processing stream with fixed total of ${totalRecords} records`);
     
     // Process stream
     console.log(`About to process stream...`);
+    let recordCount = 0; // Just for counting, not updating totalRecords
     for await (const payeeData of stream) {
       if (signal.aborted) {
         console.log(`Job ${batchId} was aborted`);
@@ -440,10 +464,10 @@ export class OptimizedClassificationService {
       }
       
       buffer.push(payeeData);
-      totalRecords++;
+      recordCount++;
       
-      if (totalRecords <= 3) {
-        console.log(`Received payee record ${totalRecords}:`, payeeData.originalName);
+      if (recordCount <= 3) {
+        console.log(`Received payee record ${recordCount}:`, payeeData.originalName);
       }
       
       if (buffer.length >= BATCH_SIZE) {
@@ -451,14 +475,14 @@ export class OptimizedClassificationService {
         totalProcessed += buffer.length;
         buffer = [];
         
-        // Update progress
+        // Update progress (but NOT totalRecords - it stays fixed!)
         const elapsedSeconds = (Date.now() - startTime) / 1000;
         const recordsPerSecond = totalProcessed / elapsedSeconds;
         await storage.updateUploadBatch(batchId, {
           processedRecords: totalProcessed,
-          totalRecords: totalRecords, // Update totalRecords as we count them
+          // DO NOT update totalRecords - keep denominator fixed!
           currentStep: `Processing at ${recordsPerSecond.toFixed(1)} records/sec`,
-          progressMessage: `Processing... ${totalProcessed} records classified so far`
+          progressMessage: `Processing... ${totalProcessed} of ${totalRecords} records`
         });
       }
     }
