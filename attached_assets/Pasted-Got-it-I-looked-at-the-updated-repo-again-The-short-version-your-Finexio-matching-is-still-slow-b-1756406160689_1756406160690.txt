@@ -1,0 +1,187 @@
+Got it. I looked at the updated repo again. The short version: your Finexio matching is still slow because the SQL patterns force sequential scans, and the indexes don’t line up with how the code queries. There’s also a couple of easy wins on concurrency and memory.
+
+Here’s a practical, low-risk plan your team can ship now.
+
+# What’s slowing it down
+
+1. Patterns that kill indexes
+   Both matchers build predicates like `LOWER(payee_name) LIKE '%...%'` and `ILIKE '%term%'`. With a leading wildcard and a `LOWER()` function, Postgres won’t use your B-tree indexes, so you end up scanning `cached_suppliers`. That’s exactly what happens in `tryOptimizedFuzzyMatch` and the “memory-optimized” cache search. ([GitHub][1])
+
+2. Wrong/missing indexes
+   Your SQL scripts create B-tree indexes on `payee_name` and even on a non-existent `name` column, but the code filters on `LOWER(payee_name)` and also probes `normalized_name` and `mastercard_business_name`. No trigram indexes are present, so `%...%` can’t be accelerated. ([GitHub][2])
+
+3. Exact matches still bypass indexes
+   The “exact” path does `LOWER(payee_name) = $1` without an expression index on `lower(payee_name)`. That’s another easy scan. ([GitHub][1])
+
+4. Concurrency is mismatched
+   `OptimizedFinexioMatching.batchMatch` fans out 50 lookups at a time by default. Elsewhere the pipeline is tuned around \~16 concurrent tasks. If your DB pool is \~10–20 conns, 50 concurrent LIKE/LOWER scans will just queue and stall. ([GitHub][1])
+
+5. Cache can grow unbounded
+   `OptimizedFinexioMatching` uses a plain `Map` with no size limit or TTL. Over long runs and diverse inputs, this will creep up in memory. You did create a tiny LRU for the “memory-optimized” cache, but the main matcher still has the unbounded map. ([GitHub][1])
+
+# Fixes that are “standard playbook” and safe
+
+## A) Add the right indexes (trigram + expression)
+
+Run this in production during a low-traffic window. It’s all `CONCURRENTLY` and additive.
+
+```sql
+-- 1) Enable trigram once
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- 2) Expression indexes for case-insensitive equals/prefix
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cs_payee_lc
+  ON cached_suppliers ((lower(payee_name)));
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cs_norm_lc
+  ON cached_suppliers ((lower(normalized_name)));
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cs_mc_lc
+  ON cached_suppliers ((lower(mastercard_business_name)));
+
+-- 3) Trigram indexes for contains/similarity
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cs_payee_trgm
+  ON cached_suppliers USING gin ((lower(payee_name)) gin_trgm_ops);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cs_norm_trgm
+  ON cached_suppliers USING gin ((lower(normalized_name)) gin_trgm_ops);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cs_mc_trgm
+  ON cached_suppliers USING gin ((lower(mastercard_business_name)) gin_trgm_ops);
+
+ANALYZE cached_suppliers;
+```
+
+Also fix the script that currently indexes `cached_suppliers(name)` and doesn’t help your queries. Make it reference the real columns you use (`payee_name`, `normalized_name`, `mastercard_business_name`). ([GitHub][3])
+
+## B) Rewrite the fuzzy query to use similarity instead of `%...%`
+
+Replace the current “LIKE soup” with a trigram-based candidate pull plus an ordered similarity:
+
+```ts
+// in optimizedFinexioMatching.ts
+private async tryOptimizedFuzzyMatch(cleanName: string): Promise<MatchResult | null> {
+  // Let Postgres do the heavy lifting with trigram similarity
+  // Optionally: SET LOCAL pg_trgm.similarity_threshold = 0.3;
+  const candidates = await db.execute(sql`
+    SELECT
+      id, payee_id, payee_name, normalized_name,
+      mastercard_business_name, city, state, category, mcc, payment_type,
+      similarity(lower(payee_name), ${cleanName}) AS sim1,
+      similarity(lower(coalesce(normalized_name, '')), ${cleanName}) AS sim2,
+      similarity(lower(coalesce(mastercard_business_name, '')), ${cleanName}) AS sim3
+    FROM cached_suppliers
+    WHERE lower(payee_name) % ${cleanName}
+       OR lower(coalesce(normalized_name, '')) % ${cleanName}
+       OR lower(coalesce(mastercard_business_name, '')) % ${cleanName}
+    ORDER BY GREATEST(sim1, sim2, sim3) DESC
+    LIMIT 5
+  `);
+
+  if (candidates.rows.length === 0) return null;
+
+  const top = candidates.rows[0];
+  const supplierName = String(top.payee_name || '').toLowerCase();
+  let confidence = Math.max(Number(top.sim1) || 0, Number(top.sim2) || 0, Number(top.sim3) || 0);
+
+  // Light polish if you want:
+  if (confidence < 0.95 && confidence >= 0.6) {
+    confidence = (confidence + this.jaroWinkler(cleanName, supplierName)) / 2;
+  }
+
+  return {
+    supplier: this.mapToSupplier(top),
+    confidence,
+    matchType: confidence >= 0.95 ? 'exact' : 'fuzzy'
+  };
+}
+```
+
+This change aligns the code with the new indexes and removes the full-table scans caused by `LIKE '%pattern%'`. ([GitHub][1])
+
+## C) Make exact matches truly O(log n)
+
+Your exact path is fine once you give it an index it can use. Keep the logic, but lean on the `lower(payee_name)` expression index:
+
+```ts
+// same code you have, now backed by idx_cs_payee_lc
+const result = await db.query.cachedSuppliers.findFirst({
+  where: or(
+    ...variations.map(v => sql`lower(${cachedSuppliers.payeeName}) = ${v.toLowerCase()}`)
+  )
+});
+```
+
+That stops the scans for exact hits. ([GitHub][1])
+
+## D) Tame concurrency to your pool
+
+Drop the default parallelism from 50 to something close to the DB pool size. Simple change:
+
+```ts
+// in OptimizedFinexioMatching
+async batchMatch(payeeNames: string[], batchSize = Number(process.env.MATCH_CONCURRENCY || 16)) { ... }
+```
+
+Or use `p-limit` to queue tasks to `N` concurrent DB calls globally. This matches the rest of the pipeline which already targets \~16 concurrent workers. ([GitHub][4])
+
+## E) Put a leash on the in-memory cache
+
+Replace the unbounded `Map` with a tiny LRU + TTL. Keep it boring and safe:
+
+```ts
+// at top
+const MAX_CACHE = Number(process.env.MATCH_CACHE_MAX || 20000);
+const TTL_MS = Number(process.env.MATCH_CACHE_TTL_MS || 10*60*1000);
+
+private matchCache = new Map<string, { v: MatchResult | null; t: number }>();
+
+private getFromCache(k: string) {
+  const e = this.matchCache.get(k);
+  if (!e) return null;
+  if (Date.now() - e.t > TTL_MS) { this.matchCache.delete(k); return null; }
+  // bump LRU
+  this.matchCache.delete(k);
+  this.matchCache.set(k, e);
+  return e.v;
+}
+
+private setCache(k: string, v: MatchResult | null) {
+  if (this.matchCache.size >= MAX_CACHE) {
+    const oldest = this.matchCache.keys().next().value;
+    if (oldest) this.matchCache.delete(oldest);
+  }
+  this.matchCache.set(k, { v, t: Date.now() });
+}
+```
+
+Swap the direct `this.matchCache.get/set` calls to `getFromCache` / `setCache`. That stops memory creep without changing behavior. ([GitHub][1])
+
+## F) Use the normalized columns you already store
+
+Your schema has `normalized_name`, yet most searches key off `payee_name`. Fold `normalized_name` and `mastercard_business_name` into both the exact and trigram paths as shown above. It’s free accuracy. ([GitHub][5])
+
+# What to hand to your Replit LLM
+
+1. Create a new migration with the SQL under “A) Add the right indexes”.
+2. In `server/services/optimizedFinexioMatching.ts`, replace `tryOptimizedFuzzyMatch` as shown and change `batchMatch` default to `16`. Also add the LRU+TTL snippet and wire it in. ([GitHub][1])
+3. In `server/services/memoryOptimizedSupplierCache.ts`, swap the `ILIKE '%term%'` search for a trigram version mirroring the code above, selecting only the columns you need. Keep its tiny LRU. ([GitHub][6])
+4. Fix `optimize-database-indexes.sql` to reference actual columns and keep `ANALYZE`. ([GitHub][3])
+
+# Quick validation checklist
+
+* Run `EXPLAIN ANALYZE` on the new fuzzy query and confirm `Bitmap Index Scan` on your `gin ... gin_trgm_ops` indexes, not `Seq Scan`.
+* Watch `pg_stat_statements` for the top query. Plan time should drop sharply.
+* Set `statement_timeout` (e.g., 5–10s) to fail fast on any leftover slow path.
+* Monitor memory for the Node process before/after to make sure the cache stays flat.
+
+# On using OpenAI vs deterministic
+
+You already disabled AI matching by default and raised the AI threshold, which is right if you care about speed first. Keep AI as a fallback only for borderline cases once the DB side is fixed. The big gains here come from the database, not the model switch. ([GitHub][1])
+
+---
+
+If you want, I can draft the exact diffs for those files next. Once these land, you’ll get fast, accurate, and predictable matching without novel stuff or memory surprises.
+
+[1]: https://github.com/booyajones/Clarity-Engine-5/raw/main/server/services/optimizedFinexioMatching.ts "raw.githubusercontent.com"
+[2]: https://github.com/booyajones/Clarity-Engine-5/raw/main/add-production-indexes.sql "raw.githubusercontent.com"
+[3]: https://github.com/booyajones/Clarity-Engine-5/raw/main/optimize-database-indexes.sql "raw.githubusercontent.com"
+[4]: https://github.com/booyajones/Clarity-Engine-5/raw/main/server/services/classificationV2.ts "raw.githubusercontent.com"
+[5]: https://github.com/booyajones/Clarity-Engine-5/raw/main/shared/schema.ts "raw.githubusercontent.com"
+[6]: https://github.com/booyajones/Clarity-Engine-5/raw/main/server/services/memoryOptimizedSupplierCache.ts "raw.githubusercontent.com"

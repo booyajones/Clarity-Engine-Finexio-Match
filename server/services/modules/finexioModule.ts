@@ -48,17 +48,17 @@ class FinexioModule implements PipelineModule {
       const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
       const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
       
-      // Reduce chunk size if memory usage is high or processing large batches
-      let CHUNK_SIZE = 30; // Default conservative chunk size
+      // With proper indexes, we can handle larger chunks efficiently
+      let CHUNK_SIZE = 100; // Increased default for optimized queries
       if (heapUsedMB < 100) {
-        CHUNK_SIZE = 50; // Can handle more if memory is low
+        CHUNK_SIZE = 200; // Can handle even more with low memory
       } else if (heapUsedMB > 200) {
-        CHUNK_SIZE = 20; // Reduce if memory is high
+        CHUNK_SIZE = 50; // Still conservative if memory is high
       }
       
-      // Further reduce for very large batches
+      // Adjust for very large batches
       if (totalCount > 5000) {
-        CHUNK_SIZE = Math.min(CHUNK_SIZE, 25);
+        CHUNK_SIZE = Math.min(CHUNK_SIZE, 100);
       }
       
       const chunks = [];

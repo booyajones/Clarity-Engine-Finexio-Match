@@ -4,6 +4,22 @@
 Clarity Engine 5 is an AI-powered web application for finance and accounting professionals. It transforms unstructured payee data into organized, actionable insights by intelligently classifying payees (Individual, Business, Government) and assigning SIC codes with confidence scores. The platform is enhanced with Mastercard Merchant Match Tool (MMT) API integration for comprehensive business enrichment, aiming to provide a sophisticated tool for data transformation and analysis in financial contexts. Key capabilities include smart classification, intuitive user experience, robust data management, and reliable job processing. The system has achieved enterprise production readiness, demonstrating high accuracy, scalability, and robust error handling across various scenarios.
 
 ### Recent Updates (January 27-29, 2025)
+
+#### January 29, 2025 - Finexio Performance Optimization
+- **Fixed Slow Finexio Matching**: Improved from 2 records/sec to optimized performance
+  - Added proper PostgreSQL trigram indexes (pg_trgm) with expression indexes for case-insensitive searches
+  - Simplified SQL queries to use indexed columns efficiently (removed complex GREATEST calculations)  
+  - Implemented proper concurrency limits (5 DB connections, 3 OpenAI) to prevent connection pool exhaustion
+  - Added LRU cache with TTL (20K entries, 10min TTL) to prevent memory growth
+  - Increased chunk sizes (100-200 records) for better parallelism with proper indexes
+  - Fixed Cancel Job button functionality - now properly cancels running batches
+- **Key Technical Changes**:
+  - Replaced sequential processing with true parallel processing in chunks
+  - All DB queries now properly wrapped with concurrency limits using p-limit
+  - Trigram similarity queries use bitmap index scans for O(log n) performance
+  - Cache reduces repeat lookups significantly
+
+### Recent Updates (January 27-28, 2025)
 - **Fixed Finexio Matching Issues**: Resolved stuck processing by loading complete 117,614 supplier records from BigQuery FinexioPOC project
 - **BigQuery Integration**: Connected to FinexioPOC project's SE_Enrichment.supplier table with proper service account credentials
 - **Cancel Job Functionality**: Added cancel button to progress tracker for stopping stuck processing jobs

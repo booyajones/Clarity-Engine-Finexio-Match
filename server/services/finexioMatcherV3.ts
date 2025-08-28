@@ -23,8 +23,8 @@ const openai = process.env.OPENAI_API_KEY ? new OpenAI({
 }) : null;
 
 // Concurrency limits - Conservative to prevent resource exhaustion
-const dbLimit = pLimit(10);  // Reduced to prevent connection pool exhaustion
-const llmLimit = pLimit(5);  // Reduced to prevent OpenAI rate limiting
+const dbLimit = pLimit(5);   // Very conservative to prevent connection pool exhaustion
+const llmLimit = pLimit(3);   // Reduced to prevent OpenAI rate limiting
 
 interface MatchResult {
   matched: boolean;
@@ -42,7 +42,53 @@ interface Candidate {
   similarity: number;
 }
 
+// Cache configuration
+const MAX_CACHE_SIZE = Number(process.env.MATCH_CACHE_MAX || 20000);
+const CACHE_TTL_MS = Number(process.env.MATCH_CACHE_TTL_MS || 10 * 60 * 1000); // 10 minutes
+
+interface CacheEntry {
+  result: MatchResult;
+  timestamp: number;
+}
+
 export class FinexioMatcherV3 {
+  private cache = new Map<string, CacheEntry>();
+  
+  /**
+   * Get from cache with TTL check
+   */
+  private getFromCache(key: string): MatchResult | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    
+    // Check TTL
+    if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    // Move to end for LRU (delete and re-add)
+    this.cache.delete(key);
+    this.cache.set(key, entry);
+    return entry.result;
+  }
+  
+  /**
+   * Set cache with LRU eviction
+   */
+  private setCache(key: string, result: MatchResult): void {
+    // Evict oldest if at capacity
+    if (this.cache.size >= MAX_CACHE_SIZE) {
+      const firstKey = this.cache.keys().next().value;
+      if (firstKey) this.cache.delete(firstKey);
+    }
+    
+    this.cache.set(key, {
+      result,
+      timestamp: Date.now()
+    });
+  }
+  
   /**
    * Main matching function - streamlined pipeline
    */
@@ -51,17 +97,26 @@ export class FinexioMatcherV3 {
     context?: { city?: string | null; state?: string | null }
   ): Promise<MatchResult> {
     const normalized = this.normalize(payeeName);
+    const cacheKey = `${normalized}:${context?.city || ''}:${context?.state || ''}`;
+    
+    // Check cache first
+    const cached = this.getFromCache(cacheKey);
+    if (cached) {
+      return cached;
+    }
     
     // Step 1: Try exact match first (super fast)
     const exactMatch = await this.tryExactMatch(payeeName, normalized);
     if (exactMatch) {
-      return {
+      const result = {
         matched: true,
-        supplierId: exactMatch.id,
+        supplierId: String(exactMatch.id),
         confidence: 1.0,
-        method: 'exact',
+        method: 'exact' as const,
         reasoning: 'Exact match found'
       };
+      this.setCache(cacheKey, result);
+      return result;
     }
     
     // Step 2: Get top candidates using trigram similarity
@@ -81,13 +136,15 @@ export class FinexioMatcherV3 {
     for (const candidate of candidates) {
       const earlyAccept = this.earlyAccept(normalized, candidate, context);
       if (earlyAccept.accept) {
-        return {
+        const result = {
           matched: true,
           supplierId: candidate.id,
           confidence: earlyAccept.confidence,
-          method: 'early_accept',
+          method: 'early_accept' as const,
           reasoning: earlyAccept.reason
         };
+        this.setCache(cacheKey, result);
+        return result;
       }
     }
     
@@ -100,24 +157,30 @@ export class FinexioMatcherV3 {
       );
       
       if (llmResult.matched && llmResult.confidence >= 0.85) {
-        return {
+        const result = {
           matched: true,
           supplierId: llmResult.supplierId,
           confidence: llmResult.confidence,
-          method: 'llm',
+          method: 'llm' as const,
           reasoning: llmResult.reasoning
         };
+        this.setCache(cacheKey, result);
+        return result;
       }
     }
     
     // No match found
-    return {
+    const result = {
       matched: false,
       supplierId: null,
       confidence: candidates[0]?.similarity || 0,
-      method: 'no_match',
+      method: 'no_match' as const,
       reasoning: 'No confident match found'
     };
+    
+    // Cache the result
+    this.setCache(cacheKey, result);
+    return result;
   }
   
   /**
@@ -145,50 +208,58 @@ export class FinexioMatcherV3 {
   }
   
   /**
-   * Try exact match - fastest path
+   * Try exact match - fastest path with proper indexes
    */
   private async tryExactMatch(payeeName: string, normalized: string): Promise<any> {
-    const result = await db.query.cachedSuppliers.findFirst({
-      where: (suppliers, { eq, or, sql }) => or(
-        eq(suppliers.payeeName, payeeName),
-        eq(sql`LOWER(${suppliers.payeeName})`, payeeName.toLowerCase()),
-        eq(sql`LOWER(${suppliers.payeeName})`, normalized)
-      )
+    // Use indexed expression columns for O(log n) lookups - WITH CONCURRENCY LIMIT
+    return dbLimit(async () => {
+      const result = await db.execute(sql`
+        SELECT * FROM cached_suppliers
+        WHERE lower(payee_name) = ${normalized}
+           OR lower(payee_name) = ${payeeName.toLowerCase()}
+           OR lower(COALESCE(normalized_name, '')) = ${normalized}
+           OR lower(COALESCE(mastercard_business_name, '')) = ${normalized}
+        LIMIT 1
+      `);
+      
+      return result.rows.length > 0 ? result.rows[0] : null;
     });
-    
-    return result;
   }
   
   /**
-   * Find candidates using trigram similarity (pg_trgm)
+   * Find candidates using trigram similarity (pg_trgm) - PROPERLY OPTIMIZED
    */
   private async findCandidates(normalizedName: string): Promise<Candidate[]> {
-    try {
-      // Use trigram similarity for fast candidate retrieval
-      const results = await db.execute(sql`
-        SELECT 
-          id,
-          payee_name as "payeeName",
-          city,
-          state,
-          similarity(LOWER(payee_name), ${normalizedName}) as similarity
-        FROM cached_suppliers
-        WHERE LOWER(payee_name) % ${normalizedName}
-        ORDER BY similarity DESC
-        LIMIT 10
-      `);
-      
-      return results.rows.map(row => ({
-        id: String(row.id),
-        payeeName: String(row.payeeName || ''),
-        city: row.city as string | null,
-        state: row.state as string | null,
-        similarity: Number(row.similarity || 0)
-      }));
-    } catch (error) {
-      console.error('Error finding candidates:', error);
-      return [];
-    }
+    // Use concurrency limit for database queries
+    return dbLimit(async () => {
+      try {
+        // Simplified query focusing on primary payee_name for speed
+        // The % operator uses the trigram index efficiently
+        const results = await db.execute(sql`
+          SELECT 
+            id,
+            payee_name as "payeeName",
+            city,
+            state,
+            similarity(lower(payee_name), ${normalizedName}) as similarity
+          FROM cached_suppliers
+          WHERE lower(payee_name) % ${normalizedName}
+          ORDER BY similarity DESC
+          LIMIT 15
+        `);
+        
+        return results.rows.map(row => ({
+          id: String(row.id),
+          payeeName: String(row.payeeName || ''),
+          city: row.city as string | null,
+          state: row.state as string | null,
+          similarity: Number(row.similarity || 0)
+        }));
+      } catch (error) {
+        console.error('Error finding candidates:', error);
+        return [];
+      }
+    });
   }
   
   /**
