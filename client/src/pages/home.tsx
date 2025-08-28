@@ -267,11 +267,13 @@ export default function Home() {
       toast({
         title: "Success",
         description: "File uploaded successfully. Processing will begin shortly.",
+        duration: 3000, // Auto-dismiss after 3 seconds
       });
       setSelectedFile(null);
       setPreviewData(null);
       setSelectedColumn("");
-      setShowProcessingModal(false); // Close the modal on success
+      // DON'T close the modal here - let it close when the job actually starts
+      // setShowProcessingModal(false); 
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }

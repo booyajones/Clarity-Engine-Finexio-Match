@@ -5,7 +5,7 @@ import pLimit from 'p-limit';
 
 // Normalized matching with similarity search
 export class OptimizedFinexioMatchingV2 {
-  private matchLimit = pLimit(40); // Concurrent DB lookups
+  private matchLimit = pLimit(10); // Reduced concurrent DB lookups to prevent timeouts
   private cache = new Map<string, any>();
   private readonly MAX_CACHE_SIZE = 10000;
 
@@ -39,11 +39,9 @@ export class OptimizedFinexioMatchingV2 {
           id,
           payee_name,
           mastercard_business_name,
-          supplier_type,
-          payment_method,
+          payment_type,
           city,
           state,
-          country,
           similarity(lower(payee_name), ${normalized}) AS payee_score,
           similarity(COALESCE(lower(mastercard_business_name), ''), ${normalized}) AS mc_score
         FROM cached_suppliers
@@ -184,8 +182,8 @@ export class OptimizedFinexioMatchingV2 {
       supplierData: matches[i].supplierData ? JSON.stringify({
         id: matches[i].supplierData.id,
         name: matches[i].supplierData.payee_name,
-        type: matches[i].supplierData.supplier_type,
-        paymentMethod: matches[i].supplierData.payment_method
+        type: matches[i].supplierData.payment_type,
+        paymentMethod: matches[i].supplierData.payment_type
       }) : null
     }));
     

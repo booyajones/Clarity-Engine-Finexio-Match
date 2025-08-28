@@ -3,7 +3,7 @@
 ## Overview
 Clarity Engine 5 is an AI-powered web application for finance and accounting professionals. It transforms unstructured payee data into organized, actionable insights by intelligently classifying payees (Individual, Business, Government) and assigning SIC codes with confidence scores. The platform is enhanced with Mastercard Merchant Match Tool (MMT) API integration for comprehensive business enrichment, aiming to provide a sophisticated tool for data transformation and analysis in financial contexts. Key capabilities include smart classification, intuitive user experience, robust data management, and reliable job processing. The system has achieved enterprise production readiness, demonstrating high accuracy, scalability, and robust error handling across various scenarios.
 
-### Recent Updates (January 27-28, 2025)
+### Recent Updates (January 27-29, 2025)
 - **Fixed Finexio Matching Issues**: Resolved stuck processing by loading complete 117,614 supplier records from BigQuery FinexioPOC project
 - **BigQuery Integration**: Connected to FinexioPOC project's SE_Enrichment.supplier table with proper service account credentials
 - **Cancel Job Functionality**: Added cancel button to progress tracker for stopping stuck processing jobs
@@ -33,6 +33,13 @@ Clarity Engine 5 is an AI-powered web application for finance and accounting pro
   - **Chunked Processing**: Processes 100 records at a time to prevent memory exhaustion (previously stuck at 9,000 records)
   - **Fast-path Classification**: Instant classification for obvious patterns (government entities, individual names, business suffixes) saving ~20-30% OpenAI API calls
   - **Fixed Processing Modal Bug**: Modal now properly closes on both success and error conditions
+- **January 29, 2025 Critical Bug Fixes**:
+  - Fixed fast-path classification returning incorrect field names (removed `naicsCode`, added proper `sicDescription`)
+  - Fixed database column errors in Finexio matching (changed `supplier_type` to `payment_type`)
+  - Reduced concurrent database connections from 40 to 10 to prevent timeout exhaustion
+  - Fixed toast message persistence by adding 3-second auto-dismiss duration
+  - Fixed modal closing timing - now waits for job to actually start before closing
+  - Optimized database queries to prevent connection pool exhaustion
 
 ## User Preferences
 - **Communication style**: Simple, everyday language
