@@ -58,8 +58,8 @@ class FinexioModule implements PipelineModule {
         const chunkResults = [];
         
         try {
-          // Process chunk with limited concurrency - only 5 at a time
-          const CONCURRENT_LIMIT = 5;
+          // Process chunk with higher concurrency now that AI is disabled
+          const CONCURRENT_LIMIT = 10; // Increased from 5 since AI enhancement is disabled
           for (let i = 0; i < chunk.length; i += CONCURRENT_LIMIT) {
             const batch = chunk.slice(i, i + CONCURRENT_LIMIT);
             

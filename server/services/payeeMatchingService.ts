@@ -49,7 +49,7 @@ export class PayeeMatchingService {
       const opts = {
         enableFinexio: true,
         enableMastercard: false, // Disabled until P12 password is provided
-        enableAI: true,
+        enableAI: false, // Disabled for performance - AI slows matching to 2 records/sec
         confidenceThreshold: 0.7,
         aiConfidenceThreshold: 0.5,
         ...options

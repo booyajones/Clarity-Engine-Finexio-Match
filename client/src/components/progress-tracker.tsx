@@ -59,7 +59,10 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
       
       const minutes = Math.floor(elapsed / 60000);
       const seconds = Math.floor((elapsed % 60000) / 1000);
-      setElapsedTime(`${minutes}m ${seconds}s`);
+      
+      // Calculate refresh countdown (refreshes every 5 seconds)
+      const refreshIn = 5 - (seconds % 5);
+      setElapsedTime(`${minutes}m ${seconds}s • Refresh in ${refreshIn}s`);
     };
 
     updateElapsed();

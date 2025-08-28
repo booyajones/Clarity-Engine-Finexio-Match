@@ -175,15 +175,16 @@ export class FuzzyMatcher {
     else if (prefixBoost > 0) matchType = 'prefix_cascading';
     else if (wordBoundaryBoost > 0) matchType = 'boundary_cascading';
     
-    // If confidence is below 90%, use AI for final determination
-    if (averageConfidence >= 0.9) {
+    // Disable AI enhancement for performance (was causing 2 records/sec slowdown)
+    // Changed threshold from 90% to 99.9% - effectively disabling AI except for edge cases
+    if (averageConfidence >= 0.999) {
       return {
         isMatch: true,
         confidence: averageConfidence,
         matchType: matchType,
         details: { ...matchDetails, boosts: { exact: exactBoost, prefix: prefixBoost, wordBoundary: wordBoundaryBoost } },
       };
-    } else if (averageConfidence >= 0.4 && averageConfidence < 0.9 && this.openai) {
+    } else if (averageConfidence >= 0.4 && averageConfidence < 0.999 && this.openai && false) { // AI disabled for performance
       // Skip AI for single-word matches with heavy penalties (likely just surnames)
       const isLikelySurname = inputName.split(/\s+/).length === 1 && ambiguityPenalty >= 0.3;
       if (isLikelySurname) {
