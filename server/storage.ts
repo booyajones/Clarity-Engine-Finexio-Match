@@ -168,15 +168,46 @@ export class DatabaseStorage implements IStorage {
     return batch;
   }
 
-  async getUserUploadBatches(userId: number): Promise<UploadBatch[]> {
+  async getUserUploadBatches(userId: number): Promise<any[]> {
     const batches = await db
       .select()
       .from(uploadBatches)
       .where(eq(uploadBatches.userId, userId))
       .orderBy(desc(uploadBatches.createdAt));
     
-    // Calculate real-time progress for each enrichment phase
+    // Map batches to camelCase and calculate real-time progress
+    const mappedBatches = [];
     for (const batch of batches) {
+      // Convert snake_case to camelCase for frontend compatibility
+      const mappedBatch: any = {
+        id: batch.id,
+        filename: batch.filename,
+        originalFilename: batch.originalFilename,
+        status: batch.status,
+        totalRecords: batch.totalRecords,
+        processedRecords: batch.processedRecords,
+        skippedRecords: batch.skippedRecords,
+        currentStep: batch.currentStep,
+        progressMessage: batch.progressMessage,
+        accuracy: batch.accuracy,
+        userId: batch.userId,
+        // Map enrichment status fields to camelCase
+        finexioMatchingStatus: batch.finexioMatchingStatus,
+        finexioMatchingProgress: batch.finexioMatchingProgress || 0,
+        finexioMatchPercentage: batch.finexioMatchPercentage || 0,
+        googleAddressStatus: batch.googleAddressStatus,
+        googleAddressProgress: batch.googleAddressProgress || 0,
+        googleAddressValidated: batch.googleAddressValidated || 0,
+        mastercardEnrichmentStatus: batch.mastercardEnrichmentStatus,
+        mastercardEnrichmentProgress: batch.mastercardEnrichmentProgress || 0,
+        mastercardActualEnriched: batch.mastercardActualEnriched || 0,
+        akkioPredictionStatus: batch.akkioPredictionStatus,
+        akkioPredictionProgress: batch.akkioPredictionProgress || 0,
+        akkioPredictionSuccessful: batch.akkioPredictionSuccessful || 0,
+        createdAt: batch.createdAt,
+        completedAt: batch.completedAt
+      };
+      
       if (batch.processedRecords > 0) {
         // Get Finexio matching progress and results
         // Count records that have been processed for Finexio (either matched or attempted)
@@ -194,9 +225,9 @@ export class DatabaseStorage implements IStorage {
         const finexioProcessed = parseInt(finexioResult.rows[0]?.processed_count || '0');
         const totalRecords = parseInt(finexioResult.rows[0]?.total_records || '0');
         
-        batch.finexioMatchedCount = matchedCount;
-        batch.finexioMatchPercentage = totalRecords > 0 ? Math.round((matchedCount / totalRecords) * 100) : 0;
-        batch.finexioMatchingProgress = finexioProcessed; // Actual records processed through Finexio
+        mappedBatch.finexioMatchedCount = matchedCount;
+        mappedBatch.finexioMatchPercentage = totalRecords > 0 ? Math.round((matchedCount / totalRecords) * 100) : 0;
+        mappedBatch.finexioMatchingProgress = finexioProcessed; // Actual records processed through Finexio
         
         // Get Google Address validation progress
         const googleResult = await db.execute(sql`
@@ -208,8 +239,8 @@ export class DatabaseStorage implements IStorage {
         `);
         
         const googleValidated = parseInt(googleResult.rows[0]?.validated_count || '0');
-        batch.googleAddressValidated = googleValidated;
-        batch.googleAddressProgress = googleValidated; // Progress is same as validated count
+        mappedBatch.googleAddressValidated = googleValidated;
+        mappedBatch.googleAddressProgress = googleValidated; // Progress is same as validated count
         
         // Get actual Mastercard enrichment progress
         const mastercardResult = await db.execute(sql`
@@ -225,10 +256,10 @@ export class DatabaseStorage implements IStorage {
         const mcProcessedCount = parseInt(mastercardResult.rows[0]?.processed_count || '0');
         const mcEnrichedCount = parseInt(mastercardResult.rows[0]?.enriched_count || '0');
         
-        batch.mastercardActualEnriched = mcEnrichedCount;
-        batch.mastercardEnrichmentProcessed = mcProcessedCount;
-        batch.mastercardEnrichmentProgress = mcProcessedCount; // Track actual processing progress
-        batch.mastercardEnrichmentTotal = batch.processedRecords;
+        mappedBatch.mastercardActualEnriched = mcEnrichedCount;
+        mappedBatch.mastercardEnrichmentProcessed = mcProcessedCount;
+        mappedBatch.mastercardEnrichmentProgress = mcProcessedCount; // Track actual processing progress
+        mappedBatch.mastercardEnrichmentTotal = batch.processedRecords;
         
         // Get Akkio prediction progress
         const akkioResult = await db.execute(sql`
@@ -241,12 +272,14 @@ export class DatabaseStorage implements IStorage {
         
         const akkioPredicted = parseInt(akkioResult.rows[0]?.predicted_count || '0');
         const akkioProcessed = parseInt(akkioResult.rows[0]?.processed_count || '0');
-        batch.akkioPredictionSuccessful = akkioPredicted;
-        batch.akkioPredictionProgress = akkioProcessed;
+        mappedBatch.akkioPredictionSuccessful = akkioPredicted;
+        mappedBatch.akkioPredictionProgress = akkioProcessed;
       }
+      
+      mappedBatches.push(mappedBatch);
     }
     
-    return batches;
+    return mappedBatches;
   }
 
   async createPayeeClassification(classification: InsertPayeeClassification): Promise<PayeeClassification> {

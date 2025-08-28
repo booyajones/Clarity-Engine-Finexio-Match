@@ -783,6 +783,36 @@ export class OptimizedClassificationService {
   
 
 
+  private async checkAndUpdateBatchCompletion(batchId: number): Promise<void> {
+    try {
+      // Check if all modules are complete for the batch
+      const batch = await storage.getUploadBatch(batchId);
+      if (!batch) {
+        console.error(`Batch ${batchId} not found`);
+        return;
+      }
+
+      const isClassificationComplete = batch.classificationStatus === "completed" || batch.classificationStatus === "skipped";
+      const isFinexioComplete = batch.finexioMatchingStatus === "completed" || batch.finexioMatchingStatus === "skipped";
+      const isMastercardComplete = batch.mastercardEnrichmentStatus === "completed" || batch.mastercardEnrichmentStatus === "skipped";
+      const isAkkioComplete = batch.akkioPredictionStatus === "completed" || batch.akkioPredictionStatus === "skipped";
+
+      if (isClassificationComplete && isFinexioComplete && isMastercardComplete && isAkkioComplete) {
+        console.log(`All modules complete for batch ${batchId}, marking batch as completed`);
+        await storage.updateUploadBatch(batchId, {
+          status: "completed",
+          completedAt: new Date(),
+          currentStep: "Processing complete",
+          progressMessage: `Processing completed. Classification: ${batch.classificationStatus}, Finexio: ${batch.finexioMatchingStatus}, Mastercard: ${batch.mastercardEnrichmentStatus}, Akkio: ${batch.akkioPredictionStatus}`
+        });
+      } else {
+        console.log(`Batch ${batchId} modules not yet complete. Classification: ${batch.classificationStatus}, Finexio: ${batch.finexioMatchingStatus}, Mastercard: ${batch.mastercardEnrichmentStatus}, Akkio: ${batch.akkioPredictionStatus}`);
+      }
+    } catch (error) {
+      console.error(`Error checking batch completion for batch ${batchId}:`, error);
+    }
+  }
+
   private async performOpenAIClassification(payee: PayeeData): Promise<ClassificationResult> {
     try {
       // Rate limiting is handled at the route level
