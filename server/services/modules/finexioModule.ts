@@ -97,8 +97,14 @@ class FinexioModule implements PipelineModule {
                   finexioMatchReasoning: `${result.method}: ${result.reasoning}` // Combined method and reasoning
                 });
                 return { matched: true };
+              } else {
+                // Even if no match, record that we attempted matching
+                await storage.updatePayeeClassification(classification.id, {
+                  finexioConfidence: 0, // No match found
+                  finexioMatchReasoning: 'No matching supplier found'
+                });
+                return { matched: false };
               }
-              return { matched: false };
             } catch (error) {
               console.error(`Error matching payee ${classification.id}:`, error);
               // Return error but don't fail the whole chunk
