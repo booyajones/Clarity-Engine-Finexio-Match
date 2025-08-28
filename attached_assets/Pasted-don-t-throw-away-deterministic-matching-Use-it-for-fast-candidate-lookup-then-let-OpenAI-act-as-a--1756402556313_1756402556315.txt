@@ -1,0 +1,188 @@
+don’t throw away deterministic matching. Use it for fast candidate lookup, then let OpenAI act as a final judge. That gives you the speed you want without the 6-model CPU drag, and it keeps memory flat.
+
+Here’s the practical pattern I’d hand your Replit LLM.
+
+The plan
+
+1) DB does retrieval, LLM does adjudication.
+
+Add pg_trgm indexes so the DB can pull the top 5–10 closest supplier names in one indexed query.
+
+Skip your 6 fuzzy algorithms. Keep only a couple of cheap checks for early accept.
+
+Ask OpenAI to decide if the payee equals one of those candidates. One call. Structured JSON out.
+
+2) Early-accept rules before the LLM.
+
+If normalized names are exact, or DB similarity(name_norm, input_norm) >= 0.96 and state matches, accept immediately.
+
+Everything else goes to the LLM judge.
+
+3) Keep memory predictable.
+
+Process in chunks of 250.
+
+Cap concurrency: DB lookups ~40, LLM calls ~15.
+
+Flush results to DB every 200 rows. No giant arrays.
+
+You said cost doesn’t matter, so we’ll lean on the LLM for accuracy. But we still won’t let it scan the whole network. That would be slow and brittle. The DB gives us 5–10 likely candidates in ~tens of ms with the right index. The LLM only compares a tiny list.
+
+Drop-in snippets
+A) SQL: enable fast candidate retrieval
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+ALTER TABLE cached_suppliers
+  ADD COLUMN IF NOT EXISTS name_norm text
+  GENERATED ALWAYS AS (
+    lower(regexp_replace(payee_name, '\b(inc|llc|ltd|co|corp)\b\.?', '', 'gi'))
+  ) STORED;
+
+CREATE INDEX IF NOT EXISTS idx_suppliers_name_norm_trgm
+  ON cached_suppliers USING GIN (name_norm gin_trgm_ops);
+
+B) One round-trip to get candidates
+// db.ts
+export async function findSupplierCandidates(client, inputName: string) {
+  const norm = inputName.toLowerCase();
+  const { rows } = await client.query(
+    `SELECT id, payee_name, name_norm, city, state,
+            similarity(name_norm, $1) AS score
+     FROM cached_suppliers
+     WHERE name_norm % $1
+     ORDER BY score DESC
+     LIMIT 10`,
+    [norm]
+  );
+  return rows as Array<{
+    id: string, payee_name: string, name_norm: string, city: string|null,
+    state: string|null, score: number
+  }>;
+}
+
+C) Cheap early-accept
+function earlyAccept(inputNorm: string, c: {name_norm:string, state?:string|null}, context:{state?:string|null}) {
+  if (c.name_norm === inputNorm) return {ok:true, reason:"exact_norm"};
+  if (c.state && context.state && c.state === context.state && c.name_norm.startsWith(inputNorm)) {
+    return {ok:true, reason:"prefix+state"};
+  }
+  return {ok:false, reason:null};
+}
+
+D) LLM judge, strict JSON
+import OpenAI from "openai";
+const oa = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 15000, maxRetries: 4 });
+
+type JudgeResult = {
+  network_member: boolean;
+  matched_supplier_id: string | null;
+  confidence: number;           // 0..1
+  reason: string;               // one-liner
+};
+
+export async function judgeWithLLM(
+  payee: { name: string, city?: string|null, state?: string|null },
+  candidates: Array<{ id:string, name:string, city?:string|null, state?:string|null }>
+): Promise<JudgeResult> {
+
+  const sys = `You are a careful record-linkage adjudicator.
+Return STRICT JSON only. Decide if the payee is the SAME legal entity as any candidate.
+Be conservative. If uncertain, return network_member=false.`;
+
+  const user = {
+    task: "decide_match",
+    payee,
+    candidates,
+    output_schema: {
+      network_member: "boolean",
+      matched_supplier_id: "string | null",
+      confidence: "0..1, stringent: exact+location ≈0.98; strong name ≈0.9; weak ≈0.6",
+      reason: "short"
+    },
+    rules: [
+      "Prefer exact-normalized matches",
+      "Location agreement strengthens confidence",
+      "Ignore superficial tokens like Inc LLC Ltd Co Corp",
+      "Do NOT guess a supplier_id if no strong match"
+    ]
+  };
+
+  const resp = await oa.chat.completions.create({
+    model: "gpt-4o",
+    temperature: 0,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: sys },
+      { role: "user", content: JSON.stringify(user) }
+    ]
+  });
+
+  const json = resp.choices[0].message?.content ?? "{}";
+  return JSON.parse(json) as JudgeResult;
+}
+
+E) Pipeline glue with bounded concurrency
+import pLimit from "p-limit";
+const dbLimit = pLimit(40);
+const llmLimit = pLimit(15);
+
+for await (const chunk of readInBatches(source, 250)) {
+  const out: any[] = [];
+
+  await Promise.all(chunk.map(row => dbLimit(async () => {
+    const inputNorm = normalize(row.payee_name);
+    const cands = await findSupplierCandidates(db, inputNorm);
+
+    // Early accept
+    const ea = cands.find(c => earlyAccept(inputNorm, c, { state: row.state }).ok);
+    if (ea) {
+      out.push({ payee_id: row.id, network_member: true, matched_supplier_id: ea.id, method: "early" });
+      return;
+    }
+
+    // LLM judge
+    const trimmed = cands.slice(0, 5).map(c => ({
+      id: c.id, name: c.payee_name, city: c.city, state: c.state
+    }));
+
+    const judge = await llmLimit(() =>
+      judgeWithLLM({ name: row.payee_name, city: row.city, state: row.state }, trimmed)
+    );
+
+    out.push({
+      payee_id: row.id,
+      network_member: judge.network_member && judge.confidence >= 0.85,
+      matched_supplier_id: judge.network_member ? judge.matched_supplier_id : null,
+      confidence: judge.confidence,
+      reason: judge.reason,
+      method: "llm"
+    });
+  })));
+
+  await upsertMatches(out);   // batched write
+}
+
+
+Tuning: set the accept cut at confidence >= 0.85. Bump to 0.9 if you want ultra-clean results. Keep temperature at 0.
+
+Why this beats “LLM only” and “6 fuzzy models”
+
+LLM only can’t search 400k+ suppliers. You still need retrieval.
+
+Your 6 fuzzy algorithms are CPU heavy in Node and don’t add much once the DB already gave you good candidates.
+
+DB trigram → LLM judge is the simplest fast path: indexed retrieval in ~ms, one API call, strong accuracy, tiny memory footprint.
+
+Guardrails and reliability
+
+Circuit breaker: if LLM timeouts spike, skip adjudication and mark “not sure”. Don’t stall the batch.
+
+Backpressure: p-limit keeps RAM stable and protects DB and sockets.
+
+Logging: log the top candidate list and the LLM decision so you can audit every match.
+
+Caching: optional, but you can cache (normalized_name → supplier_id, confidence) for a day to shave even more time.
+
+Bottom line
+
+Don’t replace everything with OpenAI. Replace the slow 6-model scoring with a single LLM adjudication step, after a fast DB candidate query. It’s simple to wire, fast in practice, memory-safe, and it will improve your match precision without making the system weird or fragile.
