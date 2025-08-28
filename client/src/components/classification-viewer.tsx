@@ -1250,28 +1250,28 @@ export function ClassificationViewer({ batchId, onBack }: ClassificationViewerPr
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col items-start">
-                          {classification.payeeMatches?.[0] ? (
+                          {classification.finexioSupplierId ? (
                             <>
                               <div className="flex items-center gap-1">
                                 <span className={`text-sm font-medium ${
-                                  classification.payeeMatches[0].finexioMatchScore >= 85 ? 'text-green-600' :
-                                  classification.payeeMatches[0].finexioMatchScore >= 70 ? 'text-yellow-600' :
+                                  (classification.finexioConfidence || 0) >= 0.85 ? 'text-green-600' :
+                                  (classification.finexioConfidence || 0) >= 0.70 ? 'text-yellow-600' :
                                   'text-orange-600'
                                 }`}>
-                                  {classification.payeeMatches[0].finexioMatchScore}%
+                                  {Math.round((classification.finexioConfidence || 0) * 100)}%
                                 </span>
-                                <Badge variant={classification.payeeMatches[0].finexioMatchScore >= 85 ? "default" : "secondary"} className="text-xs">
-                                  {classification.payeeMatches[0].finexioMatchScore >= 85 ? 'Match' : 'No Match'}
+                                <Badge variant={(classification.finexioConfidence || 0) >= 0.85 ? "default" : "secondary"} className="text-xs">
+                                  {(classification.finexioConfidence || 0) >= 0.85 ? 'Match' : 'Partial'}
                                 </Badge>
                               </div>
-                              <span className="text-xs text-gray-500 truncate max-w-[150px]" title={classification.payeeMatches[0].bigQueryPayeeName}>
-                                {classification.payeeMatches[0].bigQueryPayeeName}
+                              <span className="text-xs text-gray-500 truncate max-w-[150px]" title={classification.finexioSupplierName}>
+                                {classification.finexioSupplierName || classification.finexioSupplierId}
                               </span>
-                              {classification.payeeMatches[0].matchType && (
+                              {classification.finexioMatchReasoning && (
                                 <Badge variant="outline" className="text-xs mt-1">
-                                  {classification.payeeMatches[0].matchType === 'exact' ? 'Deterministic' :
-                                   classification.payeeMatches[0].matchType === 'ai_enhanced' ? 'AI Enhanced' :
-                                   classification.payeeMatches[0].matchType}
+                                  {classification.finexioMatchReasoning.includes('exact') ? 'Exact' :
+                                   classification.finexioMatchReasoning.includes('AI') ? 'AI Enhanced' :
+                                   'Fuzzy Match'}
                                 </Badge>
                               )}
                             </>
