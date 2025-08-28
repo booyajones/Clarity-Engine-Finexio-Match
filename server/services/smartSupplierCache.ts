@@ -111,7 +111,8 @@ export class SmartSupplierCache {
   }
   
   async syncFromBigQuery(): Promise<number> {
-    if (!this.bigquery || !this.isConnected || this.syncInProgress) {
+    if (!this.bigquery || this.syncInProgress) {
+      console.log('⚠️  SmartCache: BigQuery not available or sync in progress');
       return 0;
     }
     
@@ -119,6 +120,7 @@ export class SmartSupplierCache {
     console.log('🔄 SmartCache: Starting BigQuery sync...');
     
     try {
+      // Query the finexiopoc project directly
       const query = `
         WITH distinct_suppliers AS (
           SELECT DISTINCT
@@ -135,7 +137,6 @@ export class SmartSupplierCache {
         FROM distinct_suppliers
         WHERE rn = 1
         ORDER BY payee_name
-        LIMIT 200000
       `;
       
       const [rows] = await this.bigquery.query({ query });
