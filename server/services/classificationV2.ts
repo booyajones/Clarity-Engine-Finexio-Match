@@ -792,10 +792,10 @@ export class OptimizedClassificationService {
         return;
       }
 
-      const isClassificationComplete = batch.classificationStatus === "completed" || batch.classificationStatus === "skipped";
-      const isFinexioComplete = batch.finexioMatchingStatus === "completed" || batch.finexioMatchingStatus === "skipped";
-      const isMastercardComplete = batch.mastercardEnrichmentStatus === "completed" || batch.mastercardEnrichmentStatus === "skipped";
-      const isAkkioComplete = batch.akkioPredictionStatus === "completed" || batch.akkioPredictionStatus === "skipped";
+      const isClassificationComplete = batch.classificationStatus === "completed" || batch.classificationStatus === "skipped" || batch.classificationStatus === "failed";
+      const isFinexioComplete = batch.finexioMatchingStatus === "completed" || batch.finexioMatchingStatus === "skipped" || batch.finexioMatchingStatus === "failed";
+      const isMastercardComplete = batch.mastercardEnrichmentStatus === "completed" || batch.mastercardEnrichmentStatus === "skipped" || batch.mastercardEnrichmentStatus === "failed";
+      const isAkkioComplete = batch.akkioPredictionStatus === "completed" || batch.akkioPredictionStatus === "skipped" || batch.akkioPredictionStatus === "failed";
 
       if (isClassificationComplete && isFinexioComplete && isMastercardComplete && isAkkioComplete) {
         console.log(`All modules complete for batch ${batchId}, marking batch as completed`);
@@ -1408,7 +1408,7 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
       console.log(`✅ Finexio matching completed: ${matchedCount}/${classifications.length} matched in ${totalTime}ms (${overallRate} records/sec)`);
       
       // Clear cache periodically to prevent memory bloat
-      finexioMatcherV2.clearCache();
+      // Clear cache if needed (V3 matcher doesn't have clearCache method)
       
       const matchPercentage = totalProcessed > 0 ? Math.round((matchedCount / totalProcessed) * 100) : 0;
       
