@@ -39,9 +39,16 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
   const queryClient = useQueryClient();
   
   const cancelJobMutation = useMutation({
-    mutationFn: () => apiRequest.patch(`/api/upload/batches/${batch.id}/cancel`, {}),
+    mutationFn: () => {
+      console.log(`Cancelling batch ${batch.id}...`);
+      return apiRequest.patch(`/api/upload/batches/${batch.id}/cancel`, {});
+    },
     onSuccess: () => {
+      console.log(`Batch ${batch.id} cancelled successfully`);
       queryClient.invalidateQueries({ queryKey: ['/api/upload/batches'] });
+    },
+    onError: (error) => {
+      console.error(`Failed to cancel batch ${batch.id}:`, error);
     }
   });
 
@@ -183,9 +190,15 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
             <Button
               size="sm"
               variant="destructive"
-              onClick={() => cancelJobMutation.mutate()}
+              onClick={(e) => {
+                console.log("Cancel button clicked for batch:", batch.id);
+                e.preventDefault();
+                e.stopPropagation();
+                cancelJobMutation.mutate();
+              }}
               disabled={cancelJobMutation.isPending}
-              className="h-7 text-xs"
+              className="h-7 text-xs relative z-50 cursor-pointer"
+              style={{ pointerEvents: 'auto' }}
             >
               <XCircle className="h-3 w-3 mr-1" />
               {cancelJobMutation.isPending ? "Cancelling..." : "Cancel Job"}
