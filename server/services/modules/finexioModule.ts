@@ -41,42 +41,78 @@ class FinexioModule implements PipelineModule {
 
       let matchedCount = 0;
       let processedCount = 0;
+      const totalCount = classifications.length;
+      
+      // Process in chunks to prevent connection pool exhaustion
+      const CHUNK_SIZE = 50; // Process 50 at a time
+      const chunks = [];
+      for (let i = 0; i < classifications.length; i += CHUNK_SIZE) {
+        chunks.push(classifications.slice(i, i + CHUNK_SIZE));
+      }
 
-      // Process each classification
-      for (const classification of classifications) {
+      console.log(`📦 Processing ${totalCount} classifications in ${chunks.length} chunks of ${CHUNK_SIZE}`);
+
+      // Process each chunk
+      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+        const chunk = chunks[chunkIndex];
+        
         try {
-          const result = await payeeMatchingService.matchPayeeWithBigQuery(
-            classification,
-            {
-              enableFinexio: options.enableFinexio !== false,
-              confidenceThreshold: options.confidenceThreshold || 0.85
+          // Process chunk in parallel with limited concurrency
+          const chunkPromises = chunk.map(async (classification) => {
+            try {
+              const result = await payeeMatchingService.matchPayeeWithBigQuery(
+                classification,
+                {
+                  enableFinexio: options.enableFinexio !== false,
+                  confidenceThreshold: options.confidenceThreshold || 0.85
+                }
+              );
+
+              if (result.matched && result.matchedPayee) {
+                // Update classification with Finexio match
+                await storage.updatePayeeClassification(classification.id, {
+                  finexioSupplierId: result.matchedPayee.payeeId,
+                  finexioSupplierName: result.matchedPayee.payeeName,
+                  finexioConfidence: result.matchedPayee.confidence,
+                  finexioMatchType: result.matchedPayee.matchType,
+                  finexioMatchReasoning: result.matchedPayee.matchReasoning
+                });
+                return { matched: true };
+              }
+              return { matched: false };
+            } catch (error) {
+              console.error(`Error matching payee ${classification.id}:`, error);
+              // Return error but don't fail the whole chunk
+              return { matched: false, error: true };
             }
-          );
+          });
 
-          if (result.matched && result.matchedPayee) {
-            matchedCount++;
-            
-            // Update classification with Finexio match
-            await storage.updatePayeeClassification(classification.id, {
-              finexioSupplierId: result.matchedPayee.payeeId,
-              finexioSupplierName: result.matchedPayee.payeeName,
-              finexioConfidence: result.matchedPayee.confidence,
-              finexioMatchType: result.matchedPayee.matchType,
-              finexioMatchReasoning: result.matchedPayee.matchReasoning
-            });
-          }
+          // Wait for chunk to complete
+          const chunkResults = await Promise.all(chunkPromises);
+          
+          // Count matches
+          const chunkMatches = chunkResults.filter(r => r.matched).length;
+          matchedCount += chunkMatches;
+          processedCount += chunk.length;
 
-          processedCount++;
-
-          // Update progress periodically
-          if (processedCount % 10 === 0) {
-            await storage.updateUploadBatch(batchId, {
-              progressMessage: `Matched ${matchedCount}/${processedCount} with Finexio suppliers...`
-            });
+          // Update progress after each chunk
+          const progress = Math.round((processedCount / totalCount) * 100);
+          await storage.updateUploadBatch(batchId, {
+            finexioMatchProgress: progress,
+            finexioMatchTotal: totalCount,
+            finexioMatchProcessed: processedCount,
+            progressMessage: `Finexio: Matched ${matchedCount}/${processedCount} (${progress}%)...`
+          });
+          
+          console.log(`✅ Chunk ${chunkIndex + 1}/${chunks.length}: ${chunkMatches}/${chunk.length} matched`);
+          
+          // Small delay between chunks to prevent overwhelming the database
+          if (chunkIndex < chunks.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 100));
           }
         } catch (error) {
-          console.error(`Error matching payee ${classification.id}:`, error);
-          // Continue with next payee
+          console.error(`❌ Failed to process chunk ${chunkIndex + 1}:`, error);
+          // Continue with next chunk instead of failing completely
         }
       }
 
