@@ -306,14 +306,35 @@ export default function Home() {
       
       return res.json();
     },
+    onMutate: async (batchId) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ["/api/upload/batches"] });
+      
+      // Snapshot the previous value
+      const previousBatches = queryClient.getQueryData<UploadBatch[]>(["/api/upload/batches"]);
+      
+      // Optimistically update by removing the batch from the list
+      queryClient.setQueryData<UploadBatch[]>(["/api/upload/batches"], (old) => 
+        old ? old.filter(batch => batch.id !== batchId) : []
+      );
+      
+      // Return a context object with the snapshotted value
+      return { previousBatches };
+    },
     onSuccess: () => {
       toast({
         title: "Deleted",
-        description: "Batch has been deleted.",
+        description: "Job has been removed from history.",
+        duration: 2000,
       });
+      // Refetch in background to ensure consistency
       queryClient.invalidateQueries({ queryKey: ["/api/upload/batches"] });
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _batchId, context) => {
+      // If the mutation fails, use the context returned from onMutate to roll back
+      if (context?.previousBatches) {
+        queryClient.setQueryData(["/api/upload/batches"], context.previousBatches);
+      }
       toast({
         title: "Error",
         description: error.message,
@@ -1883,10 +1904,15 @@ export default function Home() {
                           size="sm"
                           variant="ghost"
                           onClick={() => deleteMutation.mutate(batch.id)}
+                          disabled={deleteMutation.isPending}
                           title="Delete"
-                          className="hover:bg-red-50 hover:text-red-600 transition-colors"
+                          className="hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
                         >
-                          <X className="h-4 w-4" />
+                          {deleteMutation.isPending && deleteMutation.variables === batch.id ? (
+                            <div className="h-4 w-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <X className="h-4 w-4" />
+                          )}
                         </Button>
                       </div>
                     </TableCell>

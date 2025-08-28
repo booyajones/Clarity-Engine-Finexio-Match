@@ -195,6 +195,7 @@ export class DatabaseStorage implements IStorage {
         finexioMatchingStatus: batch.finexioMatchingStatus,
         finexioMatchingProgress: batch.finexioMatchingProgress || 0,
         finexioMatchPercentage: batch.finexioMatchPercentage || 0,
+        finexioMatchedCount: batch.finexioMatchedCount || 0,
         googleAddressStatus: batch.googleAddressStatus,
         googleAddressProgress: batch.googleAddressProgress || 0,
         googleAddressValidated: batch.googleAddressValidated || 0,
@@ -208,7 +209,8 @@ export class DatabaseStorage implements IStorage {
         completedAt: batch.completedAt
       };
       
-      if (batch.processedRecords > 0) {
+      // Only calculate detailed progress for actively processing batches
+      if (batch.processedRecords > 0 && batch.status === 'processing') {
         // Get Finexio matching progress and results
         // Count records that have been processed for Finexio (either matched or attempted)
         const finexioResult = await db.execute(sql`
