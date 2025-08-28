@@ -1,0 +1,245 @@
+Perfect. Here’s a straight-shooting, **non-novel** plan to make the **classification** and **Finexio match** paths faster, more reliable, and memory-safe. It sticks to proven patterns your team can drop into Replit today.
+
+---
+
+# What to change, exactly
+
+## 1) Database speedups for Finexio matching
+
+These are the biggest, safest wins. They cut match latency without new algorithms.
+
+**a) Add trigram indexes for fast `%…%` searches**
+
+```sql
+-- Enable pg_trgm just once (DB-level)
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- Normalize and index supplier names
+CREATE INDEX IF NOT EXISTS idx_suppliers_name_trgm
+  ON cached_suppliers USING GIN (payee_name gin_trgm_ops);
+
+-- If you also search an alt name column, index it too
+CREATE INDEX IF NOT EXISTS idx_suppliers_alt_name_trgm
+  ON cached_suppliers USING GIN (mastercard_business_name gin_trgm_ops);
+```
+
+**b) Prefer similarity search over wide LIKE scans**
+
+```sql
+-- Example: pull top 10 close candidates in one round-trip
+SELECT id, payee_name,
+       similarity(payee_name, $1) AS score
+FROM cached_suppliers
+WHERE payee_name % $1          -- uses trigram index
+ORDER BY score DESC
+LIMIT 10;
+```
+
+**c) Precompute and index a normalized name**
+If you store a normalized version (lowercased, de-suffixed) in a column `name_norm`, queries speed up further:
+
+```sql
+ALTER TABLE cached_suppliers
+  ADD COLUMN IF NOT EXISTS name_norm text
+  GENERATED ALWAYS AS (lower(regexp_replace(payee_name, '\b(inc|llc|ltd|co|corp)\b\.?', '', 'gi'))) STORED;
+
+CREATE INDEX IF NOT EXISTS idx_suppliers_name_norm_trgm
+  ON cached_suppliers USING GIN (name_norm gin_trgm_ops);
+```
+
+These DB-level changes align with the repo’s emphasis on “single optimized query with proper indexes” for Finexio matching (see **README** “Finexio Matching Module” and “Database Optimization”) ([GitHub][1]).
+
+---
+
+## 2) Stream, don’t heap: memory-safe batch processing
+
+You already call out “Stream Processing” and “Memory Optimization” in the README. Double down on it for both services. Process rows in **small fixed chunks** and **persist results incrementally**.
+
+**a) Hard-cap in-memory batch size**
+
+* Read input rows in chunks of **100–500**.
+* After each chunk: write results, clear arrays/maps, `global.gc?.()` if `--expose-gc` is enabled.
+
+**b) Use backpressure with p-limit**
+
+```ts
+import pLimit from 'p-limit';
+
+const limit = pLimit(25); // tune: CPU cores, DB IOPS, API rate
+const tasks = rows.map(r => limit(() => classifyAndMatch(r)));
+await Promise.all(tasks); // never exceeds 25 concurrent
+```
+
+This keeps concurrency high but bounded, so Node doesn’t balloon memory.
+
+**c) Flush intermediate results**
+
+* Use batched `INSERT ... ON CONFLICT` for DB writes every N records (e.g., 200).
+* Avoid collecting all job outputs in arrays. Stream to DB or to a temp file.
+
+There are “optimize-memory.\*” helper scripts in the repo which reinforces the need to keep memory tight (root listing shows `optimize-memory.js/.mjs`) ([GitHub][1]).
+
+---
+
+## 3) Classification fast-path before LLM
+
+We’re not changing the approach, just prioritizing cheap checks first to cut call counts and latency, which improves tail times and stability.
+
+**a) Rule-based short-circuit**
+
+* If the payee clearly matches **Individual** (firstname lastname pattern) or **Government/Bank** keywords, return immediately with high confidence.
+* Maintain a **small LRU cache** (size-bounded, 5–10k keys) for recent names.
+
+**b) Tighten the OpenAI call**
+
+* **JSON Mode / response schema** so the model returns only the fields you need.
+* **Lower `max_tokens`** to the minimum that prints your JSON.
+* **Set a client-side timeout** (e.g., 10–15s) and **retry** with exponential backoff on transient errors.
+* **Parallelism cap** for the API path (e.g., `p-limit(10–20)`) to protect memory and sockets under load.
+
+The README describes a “Classification Module” and “Optimized Finexio Matching” with parallelism and caching; these changes stay within that design while making each stage faster and safer under pressure ([GitHub][1]).
+
+---
+
+## 4) Finexio matching in one round-trip, then refine
+
+Keep the matching logic but do **DB-first candidate generation** using the trigram index. Then run your existing fuzzy scorers on only the top \~10 candidates.
+
+**a) One SQL, then score**
+
+* Query top candidates via `similarity()` (above).
+* Score with your existing functions.
+* **Early exit** if any candidate crosses a high bar (e.g., ≥0.93).
+
+**b) Optional location boost (zero-risk accuracy)**
+If you have `state` or `zip`:
+
+* **Boost** candidates with the same state/zip rather than filtering hard. No novel ML, just a simple +X to the score.
+
+---
+
+## 5) Worker/process tuning that won’t blow RAM
+
+**a) Right-size concurrency per service**
+
+* **Classification**: start with 10–20 concurrent OpenAI calls.
+* **Matching**: 25–50 concurrent DB lookups is usually safe with a 10–20 connection pool.
+* Use **separate pools** for read vs write.
+
+**b) Node process flags**
+
+* Set `--max-old-space-size=2048` (or 3072/4096 if needed) **per worker**.
+* Start multiple small workers instead of one huge process. This confines GC and keeps RSS predictable.
+
+**c) Connection pooling + timeouts**
+
+* `statement_timeout` 5–10s on Postgres.
+* Use keep-alive agents for HTTP(S) clients.
+* Log slow queries with parameters to tune later.
+
+These hardening steps align with the repo’s “Batch Processing & Management” and “Enterprise-grade” themes (status, retries, sub-batches) in the README ([GitHub][1]).
+
+---
+
+## 6) Reliability without novelty
+
+* **Circuit breaker** for OpenAI: on repeated timeouts, pause classification for 60s and keep matching/address stages running so the pipeline completes.
+* **Retry budget**: 3–5 retries with jittered backoff, then mark the record and move on.
+* **Metrics to watch**: p95/p99 latency per stage, in-use heap, queue depth, DB wait time, OpenAI timeout rate.
+
+---
+
+# Drop-in changes your Replit LLM can implement
+
+1. **SQL migrations (safe, quick)**
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS idx_suppliers_name_trgm
+  ON cached_suppliers USING GIN (payee_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_suppliers_alt_name_trgm
+  ON cached_suppliers USING GIN (mastercard_business_name gin_trgm_ops);
+
+ALTER TABLE cached_suppliers
+  ADD COLUMN IF NOT EXISTS name_norm text
+  GENERATED ALWAYS AS (lower(regexp_replace(payee_name, '\b(inc|llc|ltd|co|corp)\b\.?', '', 'gi'))) STORED;
+
+CREATE INDEX IF NOT EXISTS idx_suppliers_name_norm_trgm
+  ON cached_suppliers USING GIN (name_norm gin_trgm_ops);
+```
+
+2. **Candidate query (replace multi-LIKE loops)**
+
+```ts
+// db.ts
+export async function findSupplierCandidates(client, name: string) {
+  // try normalized first
+  const { rows } = await client.query(
+    `SELECT id, payee_name, name_norm, similarity(name_norm, $1) AS score
+     FROM cached_suppliers
+     WHERE name_norm % $1
+     ORDER BY score DESC
+     LIMIT 10`,
+    [name.toLowerCase()]
+  );
+  return rows;
+}
+```
+
+3. **Bounded concurrency (classification + matching)**
+
+```ts
+import pLimit from 'p-limit';
+const classifyLimit = pLimit(15);
+const matchLimit = pLimit(40);
+
+for (const row of chunk) {
+  tasks.push(classifyLimit(() => classify(row)));
+  tasks.push(matchLimit(() => match(row)));
+}
+await Promise.all(tasks);
+tasks.length = 0; // free memory each chunk
+```
+
+4. **Chunked streaming loop**
+
+```ts
+for await (const chunk of readRowsAsBatches(fileStream, 250)) {
+  const results = await processChunk(chunk);  // applies limits above
+  await upsertResults(results);               // batched insert/update
+  results.length = 0;                         // release
+  global.gc?.();                              // if enabled
+}
+```
+
+5. **OpenAI client hygiene**
+
+```ts
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  timeout: 15000,               // 15s
+  maxRetries: 4
+});
+// Use JSON schema or JSON mode, minimal max_tokens, temperature 0
+```
+
+6. **Postgres safety**
+
+```sql
+-- optional but useful defaults
+ALTER DATABASE yourdb SET statement_timeout = '10s';
+ALTER DATABASE yourdb SET idle_in_transaction_session_timeout = '10s';
+```
+
+---
+
+# Why this is safe and effective
+
+* Uses **standard Postgres** (pg\_trgm, GIN) and **normal Node patterns** (p-limit, streaming, batching).
+* Reduces CPU and memory pressure by limiting concurrency and object lifetimes.
+* Cuts DB time from LIKE scans to **index-backed** similarity, which is where most matching time goes.
+* Keeps your existing architecture and modules intact, exactly as described in the repo’s README sections for **Classification**, **Finexio Matching**, and **Pipeline Orchestrator**. ([GitHub][1])
+
+If you want, I can turn this into a small set of PRs: one SQL migration, one DB helper, one concurrency wrapper, and a tiny classification pre-check module.
+
+[1]: https://github.com/booyajones/Clarity-Engine-5 "GitHub - booyajones/Clarity-Engine-5"
