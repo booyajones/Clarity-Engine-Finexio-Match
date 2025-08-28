@@ -6,7 +6,7 @@
  */
 
 import { PipelineModule } from '../pipelineOrchestrator';
-import { payeeMatchingService } from '../payeeMatchingService';
+import { finexioMatcherV3 } from '../finexioMatcherV3';
 import { storage } from '../../storage';
 
 class FinexioModule implements PipelineModule {
@@ -22,7 +22,7 @@ class FinexioModule implements PipelineModule {
     try {
       // Update status
       await storage.updateUploadBatch(batchId, {
-        finexioMatchStatus: 'processing',
+        finexioMatchingStatus: 'processing',
         currentStep: 'Matching with Finexio suppliers',
         progressMessage: 'Searching Finexio supplier database...'
       });
@@ -33,8 +33,8 @@ class FinexioModule implements PipelineModule {
       if (classifications.length === 0) {
         console.log(`⚠️ No classifications found for batch ${batchId}`);
         await storage.updateUploadBatch(batchId, {
-          finexioMatchStatus: 'skipped',
-          finexioMatchCompletedAt: new Date()
+          finexioMatchingStatus: 'skipped',
+          finexioMatchingCompletedAt: new Date()
         });
         return;
       }
@@ -58,29 +58,29 @@ class FinexioModule implements PipelineModule {
         const chunkResults = [];
         
         try {
-          // Process chunk with higher concurrency now that AI is disabled
-          const CONCURRENT_LIMIT = 10; // Increased from 5 since AI enhancement is disabled
+          // Process chunk with V3 streamlined matcher (DB→Rules→AI)
+          const CONCURRENT_LIMIT = 20; // Increased to 20 with streamlined V3 matcher
           for (let i = 0; i < chunk.length; i += CONCURRENT_LIMIT) {
             const batch = chunk.slice(i, i + CONCURRENT_LIMIT);
             
             const batchPromises = batch.map(async (classification) => {
               try {
-                const result = await payeeMatchingService.matchPayeeWithBigQuery(
-                  classification,
+                // Use the new streamlined V3 matcher (DB→Rules→AI)
+                const result = await finexioMatcherV3.match(
+                  classification.cleanedName || classification.originalName,
                   {
-                    enableFinexio: options.enableFinexio !== false,
-                    confidenceThreshold: options.confidenceThreshold || 0.85
+                    city: classification.city,
+                    state: classification.state
                   }
                 );
 
-                if (result.matched && result.matchedPayee) {
+                if (result.matched && result.supplierId) {
                   // Update classification with Finexio match
                   await storage.updatePayeeClassification(classification.id, {
-                    finexioSupplierId: result.matchedPayee.payeeId,
-                    finexioSupplierName: result.matchedPayee.payeeName,
-                    finexioConfidence: result.matchedPayee.confidence,
-                    finexioMatchType: result.matchedPayee.matchType,
-                    finexioMatchReasoning: result.matchedPayee.matchReasoning
+                    finexioSupplierId: result.supplierId,
+                    finexioSupplierName: classification.cleanedName || classification.originalName,
+                    finexioConfidence: result.confidence,
+                    finexioMatchReasoning: `${result.method}: ${result.reasoning}` // Combined method and reasoning
                   });
                   return { matched: true };
                 }
@@ -105,9 +105,7 @@ class FinexioModule implements PipelineModule {
           // Update progress after each chunk
           const progress = Math.round((processedCount / totalCount) * 100);
           await storage.updateUploadBatch(batchId, {
-            finexioMatchProgress: progress,
-            finexioMatchTotal: totalCount,
-            finexioMatchProcessed: processedCount,
+            finexioMatchingProgress: progress,
             progressMessage: `Finexio: Matched ${matchedCount}/${processedCount} (${progress}%)...`
           });
           
@@ -125,8 +123,8 @@ class FinexioModule implements PipelineModule {
 
       // Update final status
       await storage.updateUploadBatch(batchId, {
-        finexioMatchStatus: 'completed',
-        finexioMatchCompletedAt: new Date(),
+        finexioMatchingStatus: 'completed',
+        finexioMatchingCompletedAt: new Date(),
         currentStep: 'Finexio matching complete',
         progressMessage: `Matched ${matchedCount}/${processedCount} payees with Finexio suppliers`
       });
@@ -136,9 +134,9 @@ class FinexioModule implements PipelineModule {
       console.error(`❌ Finexio Module: Failed for batch ${batchId}:`, error);
       
       await storage.updateUploadBatch(batchId, {
-        finexioMatchStatus: 'error',
+        finexioMatchingStatus: 'error',
         currentStep: 'Finexio matching failed',
-        progressMessage: `Error: ${error.message}`
+        progressMessage: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
       
       throw error;
