@@ -73,11 +73,33 @@ export class OptimizedClassificationService {
     this.matchingOptions = matchingOptions || {};
     this.addressColumns = addressColumns || {};
     
+    // Set initial statuses for disabled modules
+    const statusUpdates: any = {};
+    
+    if (!this.matchingOptions.enableFinexio) {
+      statusUpdates.finexioMatchingStatus = "skipped";
+    }
+    
+    if (!this.matchingOptions.enableGoogleAddressValidation) {
+      statusUpdates.googleAddressStatus = "skipped";
+    }
+    
+    if (!this.matchingOptions.enableMastercard) {
+      statusUpdates.mastercardEnrichmentStatus = "skipped";
+    }
+    
+    if (!this.matchingOptions.enableAkkio) {
+      statusUpdates.akkioPredictionStatus = "skipped";
+    }
+    
     // Store addressColumns in the batch record for later retrieval
     if (addressColumns && Object.keys(addressColumns).length > 0) {
-      await storage.updateUploadBatch(batchId, {
-        addressColumns: addressColumns as any
-      });
+      statusUpdates.addressColumns = addressColumns as any;
+    }
+    
+    // Apply all status updates if there are any
+    if (Object.keys(statusUpdates).length > 0) {
+      await storage.updateUploadBatch(batchId, statusUpdates);
     }
     
     // Check if file exists

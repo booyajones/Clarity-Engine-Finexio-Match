@@ -83,12 +83,12 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
     {
       name: "Finexio Matching",
       key: "finexio",
-      status: batch.finexioMatchingProgress >= batch.processedRecords ? "completed" :
+      status: batch.finexioMatchingProgress >= batch.totalRecords ? "completed" :
               batch.finexioMatchingProgress > 0 ? "in_progress" : "pending",
       current: batch.finexioMatchingProgress || 0,
-      total: batch.processedRecords || batch.totalRecords,
-      percentage: batch.processedRecords > 0 ? 
-        Math.round((batch.finexioMatchingProgress || 0) / batch.processedRecords * 100) : 0,
+      total: batch.totalRecords,
+      percentage: batch.totalRecords > 0 ? 
+        Math.round((batch.finexioMatchingProgress || 0) / batch.totalRecords * 100) : 0,
       matchRate: batch.finexioMatchPercentage,
       color: { bg: "bg-green-500", light: "bg-green-100", text: "text-green-700" },
       enabled: batch.finexioMatchingStatus !== "skipped"
@@ -96,12 +96,12 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
     {
       name: "Google Address",
       key: "google",
-      status: batch.googleAddressProgress >= batch.processedRecords ? "completed" :
+      status: batch.googleAddressProgress >= batch.totalRecords ? "completed" :
               batch.googleAddressProgress > 0 ? "in_progress" : "pending",
       current: batch.googleAddressProgress || 0,
-      total: batch.processedRecords || batch.totalRecords,
-      percentage: batch.processedRecords > 0 ? 
-        Math.round((batch.googleAddressProgress || 0) / batch.processedRecords * 100) : 0,
+      total: batch.totalRecords,
+      percentage: batch.totalRecords > 0 ? 
+        Math.round((batch.googleAddressProgress || 0) / batch.totalRecords * 100) : 0,
       validated: batch.googleAddressValidated,
       color: { bg: "bg-indigo-500", light: "bg-indigo-100", text: "text-indigo-700" },
       enabled: batch.googleAddressStatus !== "skipped"
@@ -109,12 +109,12 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
     {
       name: "Mastercard",
       key: "mastercard",
-      status: batch.mastercardEnrichmentProgress >= batch.processedRecords ? "completed" :
+      status: batch.mastercardEnrichmentProgress >= batch.totalRecords ? "completed" :
               batch.mastercardEnrichmentProgress > 0 ? "in_progress" : "pending",
       current: batch.mastercardEnrichmentProgress || 0,
-      total: batch.processedRecords || batch.totalRecords,
-      percentage: batch.processedRecords > 0 ? 
-        Math.round((batch.mastercardEnrichmentProgress || 0) / batch.processedRecords * 100) : 0,
+      total: batch.totalRecords,
+      percentage: batch.totalRecords > 0 ? 
+        Math.round((batch.mastercardEnrichmentProgress || 0) / batch.totalRecords * 100) : 0,
       enriched: batch.mastercardActualEnriched,
       color: { bg: "bg-purple-500", light: "bg-purple-100", text: "text-purple-700" },
       enabled: batch.mastercardEnrichmentStatus !== "skipped"
@@ -122,12 +122,12 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
     {
       name: "Akkio ML",
       key: "akkio",
-      status: batch.akkioPredictionProgress >= batch.processedRecords ? "completed" :
+      status: batch.akkioPredictionProgress >= batch.totalRecords ? "completed" :
               batch.akkioPredictionProgress > 0 ? "in_progress" : "pending",
       current: batch.akkioPredictionProgress || 0,
-      total: batch.processedRecords || batch.totalRecords,
-      percentage: batch.processedRecords > 0 ? 
-        Math.round((batch.akkioPredictionProgress || 0) / batch.processedRecords * 100) : 0,
+      total: batch.totalRecords,
+      percentage: batch.totalRecords > 0 ? 
+        Math.round((batch.akkioPredictionProgress || 0) / batch.totalRecords * 100) : 0,
       predicted: batch.akkioPredictionSuccessful,
       color: { bg: "bg-orange-500", light: "bg-orange-100", text: "text-orange-700" },
       enabled: batch.akkioPredictionStatus !== "skipped"
