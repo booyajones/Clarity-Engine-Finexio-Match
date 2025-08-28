@@ -230,7 +230,9 @@ export class OptimizedFinexioMatchingV2 {
     if (this.cache.size >= this.MAX_CACHE_SIZE) {
       // Remove oldest entries (FIFO)
       const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
+      if (firstKey) {
+        this.cache.delete(firstKey);
+      }
     }
     this.cache.set(key, value);
   }

@@ -1147,6 +1147,72 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
     return keys[0]; // Default to first column
   }
   
+  // Fast-path classification for obvious patterns (saves OpenAI API calls)
+  private tryFastPathClassification(name: string): ClassificationResult | null {
+    const cleanName = name.trim().toUpperCase();
+    
+    // Pattern 1: Government entities
+    const govPatterns = [
+      'IRS', 'DMV', 'DEPT', 'DEPARTMENT', 'STATE OF', 'CITY OF', 'COUNTY OF',
+      'FEDERAL', 'MUNICIPAL', 'GOVERNMENT', 'PUBLIC', 'TREASURY',
+      'POLICE', 'FIRE DEPT', 'COURT', 'DISTRICT'
+    ];
+    
+    for (const pattern of govPatterns) {
+      if (cleanName.includes(pattern)) {
+        return {
+          type: 'Government',
+          confidence: 0.95,
+          reasoning: `Contains government keyword: ${pattern}`,
+          sicCode: { code: '9199', title: 'General Government, NEC' },
+          naicsCode: { code: '921190', title: 'Other General Government Support' }
+        };
+      }
+    }
+    
+    // Pattern 2: Individual names (FirstName LastName format)
+    const namePattern = /^[A-Z][a-z]+ [A-Z][a-z]+$/;
+    if (namePattern.test(name.trim())) {
+      // Check it's not a business with a person's name
+      const bizSuffixes = ['LLC', 'INC', 'CORP', 'CO', 'LTD', 'GROUP', 'PARTNERS'];
+      const hasBusinessSuffix = bizSuffixes.some(suffix => 
+        cleanName.includes(suffix.toUpperCase())
+      );
+      
+      if (!hasBusinessSuffix) {
+        return {
+          type: 'Individual',
+          confidence: 0.90,
+          reasoning: 'Name follows FirstName LastName pattern',
+          sicCode: { code: '8811', title: 'Private Households' },
+          naicsCode: { code: '814110', title: 'Private Households' }
+        };
+      }
+    }
+    
+    // Pattern 3: Obvious business suffixes
+    const businessSuffixes = [
+      'LLC', 'L.L.C.', 'INC', 'INCORPORATED', 'CORP', 'CORPORATION',
+      'COMPANY', 'CO', 'LTD', 'LIMITED', 'GROUP', 'PARTNERS', 'PARTNERSHIP',
+      'ASSOCIATES', 'ENTERPRISES', 'HOLDINGS', 'SOLUTIONS', 'SERVICES'
+    ];
+    
+    for (const suffix of businessSuffixes) {
+      if (cleanName.endsWith(suffix) || cleanName.endsWith(suffix + '.')) {
+        return {
+          type: 'Business',
+          confidence: 0.95,
+          reasoning: `Contains business suffix: ${suffix}`,
+          sicCode: { code: '7389', title: 'Business Services, NEC' },
+          naicsCode: { code: '561499', title: 'All Other Business Support Services' }
+        };
+      }
+    }
+    
+    // No fast-path match found
+    return null;
+  }
+  
   // New batch classification method for better performance
   private async classifyBatch(payees: PayeeData[]): Promise<ClassificationResult[]> {
     const results: ClassificationResult[] = [];
@@ -1163,25 +1229,32 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
     // Always perform full classification first
     let result: ClassificationResult;
     
-    // Perform OpenAI classification
-    const openaiResult = await this.performOpenAIClassification(payeeData, payeeData.originalName);
-    
-    // If confidence is high enough, use OpenAI result
-    if (openaiResult.confidence >= 0.80) {
-      result = openaiResult;
+    // Try fast-path classification first for obvious patterns
+    const fastPathResult = this.tryFastPathClassification(payeeData.originalName);
+    if (fastPathResult) {
+      console.log(`⚡ Fast-path classification for "${payeeData.originalName}": ${fastPathResult.type} (${(fastPathResult.confidence * 100).toFixed(0)}% confidence)`);
+      result = fastPathResult;
     } else {
-      // Try web search for low confidence cases
-      if ((this as any).shouldTriggerWebSearch && (this as any).shouldTriggerWebSearch(payeeData.originalName, openaiResult.confidence)) {
-        try {
-          const webSearchResult = await this.performWebSearchClassification(payeeData, payeeData.originalName);
-          // Use web search result if it has higher confidence
-          result = webSearchResult.confidence > openaiResult.confidence ? webSearchResult : openaiResult;
-        } catch (error: any) {
-          console.log(`Web search failed for ${payeeData.originalName}: ${error?.message || 'Unknown error'}`);
+      // Perform OpenAI classification for non-obvious cases
+      const openaiResult = await this.performOpenAIClassification(payeeData, payeeData.originalName);
+      
+      // If confidence is high enough, use OpenAI result
+      if (openaiResult.confidence >= 0.80) {
+        result = openaiResult;
+      } else {
+        // Try web search for low confidence cases
+        if ((this as any).shouldTriggerWebSearch && (this as any).shouldTriggerWebSearch(payeeData.originalName, openaiResult.confidence)) {
+          try {
+            const webSearchResult = await this.performWebSearchClassification(payeeData, payeeData.originalName);
+            // Use web search result if it has higher confidence
+            result = webSearchResult.confidence > openaiResult.confidence ? webSearchResult : openaiResult;
+          } catch (error: any) {
+            console.log(`Web search failed for ${payeeData.originalName}: ${error?.message || 'Unknown error'}`);
+            result = openaiResult;
+          }
+        } else {
           result = openaiResult;
         }
-      } else {
-        result = openaiResult;
       }
     }
 
@@ -1253,82 +1326,60 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
         finexioMatchingStartedAt: new Date()
       });
 
-      // Import the OPTIMIZED matching service
-      const { optimizedFinexioMatching } = await import('./optimizedFinexioMatching');
+      // Import the NEW OPTIMIZED matching service V2
+      const { finexioMatcherV2 } = await import('./optimizedFinexioMatchingV2');
 
       // Get all classifications for the batch
       const classifications = await storage.getBatchClassifications(batchId);
       console.log(`Found ${classifications.length} classifications for Finexio matching`);
 
-      // Extract payee names for batch processing
-      const payeeNames = classifications.map(c => c.cleanedName || c.originalName);
-      
-      // BATCH PROCESS IN PARALLEL (10-20x faster!)
-      const startTime = Date.now();
-      const matchResults = await optimizedFinexioMatching.batchMatch(payeeNames, 100);
-      const matchTime = Date.now() - startTime;
-      
-      console.log(`⚡ Batch matching completed in ${matchTime}ms (${(classifications.length / (matchTime / 1000)).toFixed(0)} records/sec)`);
-      
+      // Process in chunks to prevent memory exhaustion
+      const CHUNK_SIZE = 100; // Process 100 records at a time
       let matchedCount = 0;
       let totalProcessed = 0;
-
-      // Update all classifications with match results
-      const updatePromises = [];
       
-      for (const classification of classifications) {
-        try {
-          const payeeName = classification.cleanedName || classification.originalName;
-          const matchResult = matchResults.get(payeeName);
-          
-          if (matchResult) {
-            const finexioMatch = {
-              id: String(matchResult.supplier.payeeId),
-              name: matchResult.supplier.payeeName,
-              confidence: matchResult.confidence,
-              matchType: matchResult.matchType,
-              paymentType: matchResult.supplier.paymentType
-            };
-            
-            matchedCount++;
-            console.log(`✅ Matched "${payeeName}" to "${matchResult.supplier.payeeName}" (${(matchResult.confidence * 100).toFixed(0)}% confidence, ${matchResult.matchType})`);
-            
-            // Queue the update
-            updatePromises.push(
-              storage.updateClassificationFinexioMatch(classification.id, {
-                finexioSupplierId: finexioMatch.id,
-                finexioSupplierName: finexioMatch.name,
-                finexioConfidence: finexioMatch.confidence
-              })
-            );
-          } else {
-            console.log(`❌ No match found for "${payeeName}"`);
-          }
-          
-          totalProcessed++;
-        } catch (error) {
-          console.error(`Error matching classification ${classification.id} with Finexio:`, error);
-          totalProcessed++;
+      const startTime = Date.now();
+      
+      // Process in chunks for memory safety
+      for (let i = 0; i < classifications.length; i += CHUNK_SIZE) {
+        const chunk = classifications.slice(i, Math.min(i + CHUNK_SIZE, classifications.length));
+        const chunkStartTime = Date.now();
+        
+        // Process this chunk
+        const results = await finexioMatcherV2.processChunk(chunk, batchId);
+        
+        // Count matches
+        const chunkMatches = results.filter(r => r.matched).length;
+        matchedCount += chunkMatches;
+        totalProcessed += chunk.length;
+        
+        const chunkTime = Date.now() - chunkStartTime;
+        const rate = (chunk.length / (chunkTime / 1000)).toFixed(0);
+        
+        console.log(`⚡ Chunk ${Math.floor(i/CHUNK_SIZE) + 1}: Processed ${chunk.length} records in ${chunkTime}ms (${rate} records/sec, ${chunkMatches} matches)`);
+        
+        // Update progress
+        await storage.updateUploadBatch(batchId, {
+          finexioMatchingProgress: totalProcessed,
+          finexioMatchingTotal: classifications.length,
+          finexioMatchedCount: matchedCount
+        });
+        
+        // Optional: Small delay between chunks to prevent overwhelming the system
+        if (i + CHUNK_SIZE < classifications.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
       
-      // Wait for all database updates to complete
-      await Promise.all(updatePromises);
-      
-      // Get cache statistics for performance monitoring
-      const cacheStats = optimizedFinexioMatching.getCacheStats();
-      console.log(`📊 Cache performance: ${cacheStats.hits} hits, ${cacheStats.misses} misses (${(cacheStats.hitRate * 100).toFixed(1)}% hit rate)`);
-      
-      // Clear cache if it's getting too large
-      if (cacheStats.size > 10000) {
-        optimizedFinexioMatching.clearCache();
-      }
-
-      const matchPercentage = totalProcessed > 0 ? Math.round((matchedCount / totalProcessed) * 100) : 0;
       const totalTime = Date.now() - startTime;
-      const recordsPerSecond = classifications.length / (totalTime / 1000);
-      console.log(`⚡ Finexio matching completed for batch ${batchId}: ${matchedCount}/${totalProcessed} matched (${matchPercentage}%)`);
-      console.log(`⚡ Performance: ${totalTime}ms total, ${recordsPerSecond.toFixed(0)} records/sec`);
+      const overallRate = (classifications.length / (totalTime / 1000)).toFixed(0);
+      
+      console.log(`✅ Finexio matching completed: ${matchedCount}/${classifications.length} matched in ${totalTime}ms (${overallRate} records/sec)`);
+      
+      // Clear cache periodically to prevent memory bloat
+      finexioMatcherV2.clearCache();
+      
+      const matchPercentage = totalProcessed > 0 ? Math.round((matchedCount / totalProcessed) * 100) : 0;
       
       // Update status to completed
       await storage.updateUploadBatch(batchId, {
