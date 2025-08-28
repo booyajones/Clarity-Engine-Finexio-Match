@@ -137,6 +137,7 @@ export default function Home() {
   const [viewingBatchId, setViewingBatchId] = useState<number | null>(null);
   const [currentView, setCurrentView] = useState<"dashboard" | "upload" | "keywords" | "single">("dashboard");
   const [showClearAllDialog, setShowClearAllDialog] = useState(false);
+  const [showProcessingModal, setShowProcessingModal] = useState(false);
   const [matchingOptions, setMatchingOptions] = useState({
     enableFinexio: true,
     enableMastercard: false,
@@ -165,6 +166,13 @@ export default function Home() {
     queryKey: ["/api/dashboard/stats"],
     // REMOVED: No auto-refresh for single customer
   });
+
+  // Hide processing modal when an active job appears
+  useEffect(() => {
+    if (batches?.some(b => b.status === "processing" || b.status === "enriching")) {
+      setShowProcessingModal(false);
+    }
+  }, [batches]);
 
   const previewMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -357,6 +365,9 @@ export default function Home() {
 
   const handleProcessFile = () => {
     if (!previewData || !selectedColumn) return;
+    
+    // Show processing modal
+    setShowProcessingModal(true);
     
     processMutation.mutate({
       tempFileName: previewData.tempFileName,
@@ -1901,6 +1912,25 @@ export default function Home() {
               Delete All Batches
             </AlertDialogAction>
           </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Processing Modal */}
+      <AlertDialog open={showProcessingModal} onOpenChange={setShowProcessingModal}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+              Processing Your File
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3 pt-2">
+              <p>Your file is being prepared for classification. This usually takes a few seconds.</p>
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Clock className="h-4 w-4" />
+                <span>Please wait while we initialize the processing pipeline...</span>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
         </AlertDialogContent>
       </AlertDialog>
       </div>
