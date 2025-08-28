@@ -22,8 +22,8 @@ import dashboardRouter from "./routes/dashboard";
 import { AppError, errorHandler, notFoundHandler, asyncHandler } from "./middleware/errorHandler";
 import { generalLimiter, uploadLimiter, classificationLimiter, expensiveLimiter } from "./middleware/rateLimiter";
 import { db, pool } from "./db";
-import { mastercardSearchRequests } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { mastercardSearchRequests, payeeClassifications } from "@shared/schema";
+import { eq, desc, and } from "drizzle-orm";
 import { mastercardApi } from "./services/mastercardApi";
 import apiGateway from "./apiGateway";
 import { memoryMonitor } from "./utils/memoryOptimizer";
@@ -602,6 +602,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Cancel a running batch job
+  app.patch("/api/upload/batches/:id/cancel", async (req, res) => {
+    try {
+      const batchId = parseInt(req.params.id);
+      
+      // Get batch details
+      const batch = await storage.getUploadBatch(batchId);
+      if (!batch) {
+        return res.status(404).json({ error: "Batch not found" });
+      }
+      
+      if (batch.status !== 'processing' && batch.status !== 'enriching') {
+        return res.status(400).json({ error: "Can only cancel processing or enriching batches" });
+      }
+      
+      // Update batch status to cancelled
+      await storage.updateUploadBatch(batchId, { 
+        status: 'cancelled',
+        currentStep: 'Cancelled by user',
+        progressMessage: 'Job cancelled by user request',
+        completedAt: new Date()
+      });
+      
+      // Mark all unprocessed classifications as cancelled
+      await db.update(payeeClassifications)
+        .set({ 
+          status: 'cancelled',
+          updatedAt: new Date() 
+        })
+        .where(and(
+          eq(payeeClassifications.batchId, batchId),
+          eq(payeeClassifications.status, 'processing')
+        ));
+      
+      console.log(`✋ Batch ${batchId} cancelled by user`);
+      
+      res.json({ success: true, message: "Batch cancelled successfully" });
+    } catch (error) {
+      console.error("Error cancelling batch:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+  
   // Export batch classifications to CSV or Excel
   app.get("/api/upload/batch/:id/export", async (req, res) => {
     try {
