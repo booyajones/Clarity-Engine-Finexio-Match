@@ -755,18 +755,18 @@ export default function Home() {
                           <div className="flex justify-between text-sm">
                             <span className="font-medium">Classification</span>
                             <span className="text-muted-foreground">
-                              {latestBatch.processedRecords}/{latestBatch.totalRecords} records
+                              {latestBatch.processedRecords}/{latestBatch.totalRecords || latestBatch.processedRecords} records
                             </span>
                           </div>
                           <div className="bg-gray-200 rounded-full h-2">
                             <div 
                               className="bg-blue-600 h-2 rounded-full transition-all"
-                              style={{ width: `${Math.min(100, (latestBatch.processedRecords / latestBatch.totalRecords) * 100)}%` }}
+                              style={{ width: `${Math.min(100, (latestBatch.processedRecords / (latestBatch.totalRecords || latestBatch.processedRecords || 1)) * 100)}%` }}
                             />
                           </div>
                           <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>{Math.round((latestBatch.processedRecords / latestBatch.totalRecords) * 100)}% complete</span>
-                            {latestBatch.processedRecords === latestBatch.totalRecords && (
+                            <span>{Math.round((latestBatch.processedRecords / (latestBatch.totalRecords || latestBatch.processedRecords || 1)) * 100)}% complete</span>
+                            {latestBatch.processedRecords === latestBatch.totalRecords && latestBatch.totalRecords > 0 && (
                               <CheckCircle2 className="h-3 w-3 text-green-600" />
                             )}
                           </div>
