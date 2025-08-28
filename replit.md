@@ -22,6 +22,11 @@ Clarity Engine 5 is an AI-powered web application for finance and accounting pro
   - Akkio now only runs when explicitly selected by user in the UI
   - Fixed progress tracker displaying incorrect "0/400" when Akkio is skipped
   - When modules are skipped, progress numbers properly reflect completion
+- **Fixed Progress Bar Display Issues**:
+  - Progress bars now properly animate from left to right as processing happens
+  - Fixed "8900/0 records" display by ensuring totalRecords is updated during stream processing
+  - Progress percentages now calculate correctly showing actual completion status
+  - Each module (Classification, Finexio, Google, Mastercard, Akkio) shows individual progress bars
 
 ## User Preferences
 - **Communication style**: Simple, everyday language

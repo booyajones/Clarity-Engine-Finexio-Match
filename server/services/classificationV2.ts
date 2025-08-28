@@ -426,7 +426,9 @@ export class OptimizedClassificationService {
     await storage.updateUploadBatch(batchId, {
       status: "processing",
       currentStep: "Starting classification",
-      progressMessage: "Initializing high-speed processing..."
+      progressMessage: "Initializing high-speed processing...",
+      totalRecords: 0, // Will be updated as records are counted
+      processedRecords: 0
     });
     
     // Process stream
@@ -454,7 +456,7 @@ export class OptimizedClassificationService {
         const recordsPerSecond = totalProcessed / elapsedSeconds;
         await storage.updateUploadBatch(batchId, {
           processedRecords: totalProcessed,
-          totalRecords: 0, // Don't update totalRecords since we don't know the final count yet
+          totalRecords: totalRecords, // Update totalRecords as we count them
           currentStep: `Processing at ${recordsPerSecond.toFixed(1)} records/sec`,
           progressMessage: `Processing... ${totalProcessed} records classified so far`
         });
