@@ -277,35 +277,7 @@ export default function Home() {
     },
   });
 
-  const cancelMutation = useMutation({
-    mutationFn: async (batchId: number) => {
-      const res = await fetch(`/api/upload/batches/${batchId}/cancel`, {
-        method: "PATCH",
-        credentials: "include",
-      });
 
-      if (!res.ok) {
-        const text = await res.text() || res.statusText;
-        throw new Error(`${res.status}: ${text}`);
-      }
-      
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Cancelled",
-        description: "Processing has been cancelled.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/upload/batches"] });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
 
   const deleteMutation = useMutation({
     mutationFn: async (batchId: number) => {
@@ -1685,13 +1657,6 @@ export default function Home() {
                         Running for: {formatDuration(batch.createdAt)}
                       </p>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => cancelMutation.mutate(batch.id)}
-                    >
-                      Cancel
-                    </Button>
                   </div>
                   <ProgressTracker batch={{
                     ...batch,

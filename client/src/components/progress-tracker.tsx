@@ -39,7 +39,7 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
   const queryClient = useQueryClient();
   
   const cancelJobMutation = useMutation({
-    mutationFn: () => apiRequest.post(`/api/upload/batch/${batch.id}/cancel`),
+    mutationFn: () => apiRequest.patch(`/api/upload/batches/${batch.id}/cancel`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/upload/batches'] });
     }
