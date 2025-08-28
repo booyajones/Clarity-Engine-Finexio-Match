@@ -37,6 +37,10 @@ Clarity Engine 5 is an AI-powered web application designed for finance and accou
 - **Resource Optimization**: Dynamic database connection pooling, scheduled cleanup, and performance monitoring endpoints.
 - **Deployment Optimization**: Dynamic port binding, enhanced Redis connection handling, comprehensive health checks, graceful shutdown, and memory optimization.
 - **Async Job Processing**: Implemented for Mastercard, using background workers, polling, and webhooks for real-time notifications.
+- **Concurrency Control**: Implemented p-limit based throttling with optimal limits (16 for classification, 32 for Finexio DB, 12 for Google Maps).
+- **Optimized Batch Sizes**: 250 records per sub-batch for optimal memory usage and throughput.
+- **Prometheus Metrics**: Comprehensive observability with histograms, counters, and gauges for all pipeline stages.
+- **Structured Logging**: Pino-based structured logging with batch/row/stage context for better debugging.
 
 #### Database
 - **Primary Database**: PostgreSQL via Neon serverless

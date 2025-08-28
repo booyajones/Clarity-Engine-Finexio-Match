@@ -1,0 +1,223 @@
+Alright, I went through the repo structure and the docs you shipped. Here’s what I’d tune across the **rest of the app** to make it faster, steadier, and more accurate without getting cute or novel.
+
+---
+
+## Fast wins you can ship now
+
+### 1) Orchestrator: saturate, don’t swamp
+
+Your pipeline orchestrator coordinates classification, Finexio matching, address validation, and Mastercard enrichment. It already supports parallel stages and sub-batches. Keep that, but align limits so you **fully use cores and the DB pool without queueing storms**. ([GitHub][1])
+
+* **One throttle per stage** with `p-limit`:
+
+  * Classification API: 12–20 in flight.
+  * Finexio DB: set to `min(pool_size * 2, 40)`.
+  * Google Maps: 10–15, respect QPS.
+  * Mastercard (async/webhooks): 8–12.
+* **Chunk size**: 200–300 rows per sub-batch. Write results after each chunk, clear arrays, let GC do its job. Your pipeline supports sub-batches already, keep it tight so RSS doesn’t drift. ([GitHub][1])
+* **Backpressure**: never `Promise.all` thousands of tasks. Always wrap with the stage-specific limiter.
+
+```ts
+import pLimit from 'p-limit';
+const llmLimit = pLimit(Number(process.env.CLASSIFY_LIMIT || 16));
+const dbLimit  = pLimit(Number(process.env.FINEXIO_LIMIT || 32));
+const mapLimit = pLimit(Number(process.env.ADDRESS_LIMIT || 12));
+```
+
+### 2) DB access (Drizzle/Postgres): stop over-fetching
+
+Backend stack uses Node + Drizzle + Postgres + Bull/Redis. Keep it. Tighten calls. ([GitHub][1])
+
+* **Select only needed columns**. No `SELECT *` in hot paths.
+* **Prepared statements** for hot queries. Reuse them.
+* **Batch writes**: `INSERT ... ON CONFLICT DO UPDATE` with 200–500 rows per statement.
+* **Pool sizes**: app=20–30, worker=10–20. Separate read vs write pools if you split traffic later.
+* **Statement timeouts**: fail fast, don’t stall the event loop.
+
+  ```sql
+  ALTER DATABASE yourdb SET statement_timeout = '8s';
+  ALTER DATABASE yourdb SET idle_in_transaction_session_timeout = '10s';
+  ```
+
+### 3) Queue hygiene (Bull)
+
+You’re already on Bull and Redis. Good. Keep jobs small and idempotent. ([GitHub][1])
+
+* Per-queue **concurrency** = CPU cores \* 2 as a start.
+* **Job timeouts**: 30–60s for network stages, 10–15s for pure DB stages.
+* **Retries**: 3–5 with exponential backoff + jitter.
+* **Circuit breaker**: if a stage hits >30% timeouts over 1 minute, pause that queue for 60s and skip to next stage so the batch completes.
+
+### 4) Classification: faster calls, stricter output
+
+The README says GPT-4o for classification with JSON output. Lock that down for speed and consistency. ([GitHub][1])
+
+* Use **JSON mode / response\_format** and a minimal schema. Keep `max_tokens` low. Temp 0.
+* **One client** (undici keep-alive) shared across calls. 10–20 in flight.
+* **Short prompt**. Strip examples in production. You only need schema + rules.
+* **Timeout** at 12–15s and retry 3x on 429/5xx.
+
+```ts
+import OpenAI from 'openai';
+const oa = new OpenAI({ timeout: 15000, maxRetries: 4 }); // reuse this instance
+```
+
+### 5) Address validation (Google)
+
+Parallel with classification/matching as your pipeline claims. Keep memory flat and avoid repeat work. ([GitHub][1])
+
+* **Request de-dup**: in-flight map keyed by normalized address to collapse duplicates.
+* **LRU cache** 10k entries for 24h. Avoid calling Maps for identical strings.
+* **Input normalization** before hitting the API (trim, collapse spaces, standardize suffixes).
+
+### 6) Mastercard enrichment (async/webhooks)
+
+You’ve documented a batchy, asynchronous Mastercard Track integration. Treat it like a separate pipeline with its own queue and backoff. ([GitHub][1])
+
+* Submit in **100–200 record** chunks.
+* **Webhook handler**: idempotent upserts keyed by Mastercard batch id and record id.
+* **Slow-lane** queue for records that 429/5xx repeatedly. Keep the main batch flowing.
+
+---
+
+## Reliability that pays for itself
+
+### 7) Observability: no guesswork
+
+Give yourself a scoreboard. You’re already tracking progress and status in the orchestrator; add metrics. ([GitHub][1])
+
+* **Prom metrics** via `prom-client`: counters, histograms, gauges.
+
+  * `pipeline_batch_seconds{stage=...}` p50/p95/p99
+  * `finexio_query_seconds` and `finexio_candidates_found`
+  * `classification_seconds` and error counts
+  * `address_seconds`, `mastercard_submit_seconds`
+* **Structured logs** with pino. One line JSON, include `batch_id`, `row_id`, `stage`, and timings.
+* **Red flags**: alert if
+
+  * classification timeout rate >10% over 5 min
+  * finexio candidate size = 0 spikes
+  * heap >70% of max for >2 min (memory leak/pressure)
+
+### 8) Memory: stream everything
+
+Your docs emphasize stream processing and sub-batches. Keep it strict. ([GitHub][1])
+
+* CSV/Excel: **row stream** with `highWaterMark` tuned. Never materialize whole files.
+* After each sub-batch: **flush writes**, clear arrays, `global.gc?.()` if enabled.
+* Replace unbounded `Map`s with **LRU+TTL** (10k–20k entries). This alone prevents slow RSS creep during long runs.
+
+---
+
+## Accuracy upgrades that are boring and effective
+
+### 9) Deterministic first, AI as judge only when needed
+
+You’ve already got multi-stage classification and AI-enhanced matching in the README. Keep accuracy high by stacking simple, cheap checks first. ([GitHub][1])
+
+* **Normalize once** per row. Reuse that string everywhere.
+* If **exact normalized** equals a supplier, accept. If **trigram similarity** is ≥0.96 and state matches, accept.
+* **Location boost**: +0.03–0.06 to candidates that match state/ZIP. It breaks ties without ML.
+* For mid-confidence cases (say 0.80–0.93), send the **payee + top 3–5 candidates** to GPT for a conservative yes/no. One call per row, JSON out. Keep temp 0 and require strict JSON.
+
+### 10) Consistency checks
+
+Cheap integrity rules catch silent accuracy bugs.
+
+* If classification says **Individual**, but the matched supplier is obviously a business (keywords, suffixes), drop confidence or re-adjudicate.
+* Ensure **city/state** combos agree. If distance between geocoded points is >50 miles for what should be the same entity, fail or lower confidence.
+
+---
+
+## Frontend (React/Vite) so it feels snappy too
+
+Your frontend stack is React 18 + Vite + TanStack Query + shadcn/ui. Leverage it. ([GitHub][1])
+
+* **SSE or WebSocket** progress stream per batch so the UI doesn’t poll every second.
+* **Virtualize** large result tables and lazy-load detail panes.
+* Use **TanStack Query** cache times that reflect batch cadence. Don’t refetch on every focus.
+* Show **per-stage ETA** using server metrics, not guesswork.
+
+---
+
+## A few copy-paste configs
+
+**Drizzle / Postgres pool**
+
+```ts
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
+
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: Number(process.env.PG_POOL_MAX || 20),
+  idleTimeoutMillis: 10_000,
+  statement_timeout: 8_000,
+  query_timeout: 10_000
+});
+export const db = drizzle(pool);
+```
+
+**Batch upsert (200–500 rows)**
+
+```ts
+await db.execute(sql`
+  INSERT INTO payee_results (batch_id, row_id, status, data)
+  SELECT * FROM UNNEST(${values})  -- pg array of tuples
+  ON CONFLICT (batch_id, row_id)
+  DO UPDATE SET status = EXCLUDED.status, data = EXCLUDED.data
+`);
+```
+
+**Stream CSV with backpressure**
+
+```ts
+import { createReadStream } from 'fs';
+import { parse } from 'csv-parse';
+
+const rs = createReadStream(filePath, { highWaterMark: 1 << 20 }); // 1MB
+const parser = rs.pipe(parse({ columns: true }));
+let chunk: any[] = [];
+for await (const row of parser) {
+  chunk.push(row);
+  if (chunk.length === 250) { await processChunk(chunk); chunk.length = 0; }
+}
+if (chunk.length) { await processChunk(chunk); }
+```
+
+**Strict JSON call for classification**
+
+```ts
+const resp = await oa.chat.completions.create({
+  model: "gpt-4o",
+  temperature: 0,
+  response_format: { type: "json_object" },
+  messages: [
+    { role: "system", content: "Return strict JSON only: {payeeType, sic, confidence}" },
+    { role: "user", content: JSON.stringify({ name: normName }) }
+  ]
+});
+const json = JSON.parse(resp.choices[0].message?.content ?? "{}");
+```
+
+---
+
+## Where these changes plug in (from your docs)
+
+* **Modules** called out in the repo: `Classification Module`, `Finexio Matching Module`, `Pipeline Orchestrator`, `Mastercard Service`. That’s exactly where the knobs above belong. ([GitHub][1])
+* **Backend/Frontend stacks** and **data-pipeline stages** (upload, streaming, parallel enrichment, async Mastercard) match the recommendations here, so you don’t need structural rewrites to adopt them. ([GitHub][1])
+
+---
+
+## If you want a punch-list for your Replit LLM
+
+1. Add stage-specific `p-limit` caps and sub-batch size 250 across the orchestrator. ([GitHub][1])
+2. Convert hot queries to projections + prepared statements; batch upserts to 200–500 rows.
+3. Enforce JSON mode and short prompts for classification; set 15s timeout + 4 retries. ([GitHub][1])
+4. Add LRU+TTL for any Map caches in long-running workers.
+5. Add Prometheus metrics and pino logging with batch/row/stage tags.
+6. Switch UI progress to SSE and virtualize big tables.
+
+Do these and you’ll see lower p95s, stable memory, and cleaner match/validation accuracy without changing your architecture or bringing in exotic tech.
+
+[1]: https://github.com/booyajones/Clarity-Engine-5 "GitHub - booyajones/Clarity-Engine-5"

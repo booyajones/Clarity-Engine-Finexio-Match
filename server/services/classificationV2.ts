@@ -16,12 +16,32 @@ import { akkioModels } from "@shared/schema";
 import { eq, desc, and } from 'drizzle-orm';
 import { FuzzyMatcher } from './fuzzyMatcher';
 import { classificationIntelligence } from './classificationIntelligence';
+import pLimit from 'p-limit';
+import { LRUCache } from 'lru-cache';
 
-// Initialize OpenAI with conditional configuration
+// Performance configuration from recommendations
+const OPTIMAL_BATCH_SIZE = Number(process.env.BATCH_SIZE || 250); // 200-300 per sub-batch
+const CLASSIFICATION_CONCURRENCY = Number(process.env.CLASSIFY_LIMIT || 16); // 12-20 in flight
+const FINEXIO_CONCURRENCY = Number(process.env.FINEXIO_LIMIT || 32); // DB pool * 2
+const ADDRESS_CONCURRENCY = Number(process.env.ADDRESS_LIMIT || 12); // Google Maps QPS
+
+// Initialize concurrency limiters
+const classificationLimit = pLimit(CLASSIFICATION_CONCURRENCY);
+const finexioLimit = pLimit(FINEXIO_CONCURRENCY);
+const addressLimit = pLimit(ADDRESS_CONCURRENCY);
+
+// LRU cache for classification results (10k entries, 24h TTL)
+const classificationCache = new LRUCache<string, ClassificationResult>({
+  max: 10000,
+  ttl: 1000 * 60 * 60 * 24, // 24 hours
+  updateAgeOnGet: true
+});
+
+// Initialize OpenAI with optimized configuration
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY,
-  maxRetries: 5,
-  timeout: 20000 // 20 second timeout for faster retries
+  maxRetries: 4, // Reduced from 5 for faster failures
+  timeout: 15000 // 15 second timeout per recommendation
 }) : null;
 
 // Helper function to check if OpenAI is available
@@ -441,8 +461,8 @@ export class OptimizedClassificationService {
     stream: Readable,
     signal: AbortSignal
   ): Promise<void> {
-    const BATCH_SIZE = 100; // Further reduced for memory safety
-    const MAX_CONCURRENT = 16; // Aligned with database pool
+    const BATCH_SIZE = OPTIMAL_BATCH_SIZE; // Use optimized batch size (250)
+    const MAX_CONCURRENT = CLASSIFICATION_CONCURRENCY; // Use configured concurrency
     let buffer: PayeeData[] = [];
     let totalProcessed = 0;
     let startTime = Date.now();
@@ -814,14 +834,24 @@ export class OptimizedClassificationService {
   }
 
   private async performOpenAIClassification(payee: PayeeData): Promise<ClassificationResult> {
+    // Check cache first
+    const cacheKey = `${payee.originalName}_${payee.address || ''}_${payee.city || ''}_${payee.state || ''}`.toLowerCase();
+    const cached = classificationCache.get(cacheKey);
+    if (cached) {
+      console.log(`Cache hit for: ${payee.originalName}`);
+      return cached;
+    }
+
     try {
-      // Rate limiting is handled at the route level
-      
+      // Optimized OpenAI call with minimal prompt per recommendations
       const response = await openai.chat.completions.create({
-        model: "gpt-4o", // Use GPT-4o for best accuracy
+        model: "gpt-4o",
+        temperature: 0,
+        max_tokens: 200, // Reduced from 500 for faster responses
+        response_format: { type: "json_object" },
         messages: [{
           role: "system",
-          content: `Classify payees into these categories with HIGH CONFIDENCE (95%+):
+          content: `Return strict JSON: {payeeType: "Individual|Business|Government|Insurance|Banking|Internal Transfer", confidence: 0.95-0.99, sicCode: "XXXX", reasoning: "brief"}
 
 CATEGORIES:
 • Individual: Personal names, employees, contractors, students (includes Individual/Contractors, Employees, Students)
@@ -894,6 +924,9 @@ CRITICAL: Classify ALL recognizable company names as "Business" immediately. Onl
         reasoning: result.reasoning || "Classified based on available information",
         flagForReview: result.flagForReview || result.confidence < 0.95
       };
+      
+      // Cache the result before returning
+      classificationCache.set(cacheKey, classification);
       
       return classification;
     } catch (error) {
@@ -1245,10 +1278,11 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
   
   // New batch classification method for better performance
   private async classifyBatch(payees: PayeeData[]): Promise<ClassificationResult[]> {
-    const results: ClassificationResult[] = [];
-    
-    // Process in parallel without delays for maximum speed
-    const promises = payees.map(payee => this.classifyPayee(payee));
+    // Apply concurrency limiting for OpenAI calls as per performance recommendations
+    // This prevents overwhelming the API and ensures stable performance
+    const promises = payees.map(payee => 
+      classificationLimit(() => this.classifyPayee(payee))
+    );
     
     const classificationResults = await Promise.all(promises);
     return classificationResults;

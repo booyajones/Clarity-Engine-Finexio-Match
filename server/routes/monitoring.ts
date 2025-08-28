@@ -2,6 +2,7 @@ import { Router } from 'express';
 import memoryMonitor from '../utils/memoryMonitor';
 import { supplierCache, classificationCache, queryCache } from '../utils/performanceOptimizer';
 import os from 'os';
+import { getMetrics } from '../services/performanceMonitor';
 
 const router = Router();
 
@@ -129,6 +130,18 @@ router.get('/performance', (req, res) => {
       arch: process.arch
     }
   });
+});
+
+// Prometheus metrics endpoint for performance monitoring
+router.get('/metrics', async (req, res) => {
+  try {
+    const metrics = await getMetrics();
+    res.set('Content-Type', 'text/plain; version=0.0.4');
+    res.send(metrics);
+  } catch (error) {
+    console.error('Error getting metrics:', error);
+    res.status(500).json({ error: 'Failed to get metrics' });
+  }
 });
 
 // Force garbage collection endpoint (admin only)
