@@ -43,64 +43,80 @@ class FinexioModule implements PipelineModule {
       let processedCount = 0;
       const totalCount = classifications.length;
       
-      // Process in chunks to prevent connection pool exhaustion
-      const CHUNK_SIZE = 50; // Process 50 at a time
+      // Adaptive chunk sizing based on memory usage and record count
+      const memUsage = process.memoryUsage();
+      const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+      const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
+      
+      // Reduce chunk size if memory usage is high or processing large batches
+      let CHUNK_SIZE = 30; // Default conservative chunk size
+      if (heapUsedMB < 100) {
+        CHUNK_SIZE = 50; // Can handle more if memory is low
+      } else if (heapUsedMB > 200) {
+        CHUNK_SIZE = 20; // Reduce if memory is high
+      }
+      
+      // Further reduce for very large batches
+      if (totalCount > 5000) {
+        CHUNK_SIZE = Math.min(CHUNK_SIZE, 25);
+      }
+      
       const chunks = [];
       for (let i = 0; i < classifications.length; i += CHUNK_SIZE) {
         chunks.push(classifications.slice(i, i + CHUNK_SIZE));
       }
 
       console.log(`📦 Processing ${totalCount} classifications in ${chunks.length} chunks of ${CHUNK_SIZE}`);
+      console.log(`💾 Memory: ${heapUsedMB}MB / ${heapTotalMB}MB heap used`);
 
-      // Process each chunk with limited concurrency
+      // Process each chunk with TRUE parallel processing
       for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
         const chunk = chunks[chunkIndex];
-        const chunkResults = [];
+        const startTime = Date.now();
         
         try {
-          // Process chunk with V3 streamlined matcher (DB→Rules→AI)
-          const CONCURRENT_LIMIT = 20; // Increased to 20 with streamlined V3 matcher
-          for (let i = 0; i < chunk.length; i += CONCURRENT_LIMIT) {
-            const batch = chunk.slice(i, i + CONCURRENT_LIMIT);
-            
-            const batchPromises = batch.map(async (classification) => {
-              try {
-                // Use the new streamlined V3 matcher (DB→Rules→AI)
-                const result = await finexioMatcherV3.match(
-                  classification.cleanedName || classification.originalName,
-                  {
-                    city: classification.city,
-                    state: classification.state
-                  }
-                );
-
-                if (result.matched && result.supplierId) {
-                  // Update classification with Finexio match
-                  await storage.updatePayeeClassification(classification.id, {
-                    finexioSupplierId: result.supplierId,
-                    finexioSupplierName: classification.cleanedName || classification.originalName,
-                    finexioConfidence: result.confidence,
-                    finexioMatchReasoning: `${result.method}: ${result.reasoning}` // Combined method and reasoning
-                  });
-                  return { matched: true };
+          // Process ALL records in chunk in parallel using V3 matcher's concurrency control
+          const chunkPromises = chunk.map(async (classification) => {
+            try {
+              // Use the new streamlined V3 matcher (DB→Rules→AI)
+              // The V3 matcher internally uses pLimit to control concurrency
+              const result = await finexioMatcherV3.match(
+                classification.cleanedName || classification.originalName,
+                {
+                  city: classification.city,
+                  state: classification.state
                 }
-                return { matched: false };
-              } catch (error) {
-                console.error(`Error matching payee ${classification.id}:`, error);
-                // Return error but don't fail the whole chunk
-                return { matched: false, error: true };
-              }
-            });
+              );
 
-            // Wait for this batch to complete before starting the next
-            const batchResults = await Promise.all(batchPromises);
-            chunkResults.push(...batchResults);
-          }
+              if (result.matched && result.supplierId) {
+                // Update classification with Finexio match
+                await storage.updatePayeeClassification(classification.id, {
+                  finexioSupplierId: result.supplierId,
+                  finexioSupplierName: classification.cleanedName || classification.originalName,
+                  finexioConfidence: result.confidence,
+                  finexioMatchReasoning: `${result.method}: ${result.reasoning}` // Combined method and reasoning
+                });
+                return { matched: true };
+              }
+              return { matched: false };
+            } catch (error) {
+              console.error(`Error matching payee ${classification.id}:`, error);
+              // Return error but don't fail the whole chunk
+              return { matched: false, error: true };
+            }
+          });
+
+          // Wait for ALL records in chunk to complete in parallel
+          const chunkResults = await Promise.all(chunkPromises);
           
           // Count matches
           const chunkMatches = chunkResults.filter(r => r.matched).length;
           matchedCount += chunkMatches;
           processedCount += chunk.length;
+
+          // Calculate performance metrics
+          const elapsedMs = Date.now() - startTime;
+          const recordsPerSecond = Math.round((chunk.length / elapsedMs) * 1000);
 
           // Update progress after each chunk
           const progress = Math.round((processedCount / totalCount) * 100);
@@ -109,11 +125,32 @@ class FinexioModule implements PipelineModule {
             progressMessage: `Finexio: Matched ${matchedCount}/${processedCount} (${progress}%)...`
           });
           
-          console.log(`✅ Chunk ${chunkIndex + 1}/${chunks.length}: ${chunkMatches}/${chunk.length} matched`);
+          console.log(`⚡ Chunk ${chunkIndex + 1}: Processed ${chunk.length} records in ${elapsedMs}ms (${recordsPerSecond} records/sec, ${chunkMatches} matches)`);
           
-          // Small delay between chunks to prevent overwhelming the database
+          // Memory management between chunks
           if (chunkIndex < chunks.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Force garbage collection if available (Node.js must be run with --expose-gc flag)
+            if (global.gc) {
+              global.gc();
+            }
+            
+            // Adaptive delay based on performance and memory
+            let delayMs = 100; // Base delay
+            if (recordsPerSecond < 10) {
+              delayMs = 500; // Longer delay if processing is slow
+            } else if (recordsPerSecond < 30) {
+              delayMs = 200; // Medium delay
+            }
+            
+            // Check memory pressure
+            const currentMemUsage = process.memoryUsage();
+            const currentHeapUsedMB = Math.round(currentMemUsage.heapUsed / 1024 / 1024);
+            if (currentHeapUsedMB > 250) {
+              delayMs = Math.max(delayMs, 1000); // Longer delay if memory is high
+              console.log(`⚠️ High memory usage: ${currentHeapUsedMB}MB, adding ${delayMs}ms delay`);
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, delayMs));
           }
         } catch (error) {
           console.error(`❌ Failed to process chunk ${chunkIndex + 1}:`, error);

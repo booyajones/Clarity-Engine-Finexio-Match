@@ -22,9 +22,9 @@ const openai = process.env.OPENAI_API_KEY ? new OpenAI({
   maxRetries: 2
 }) : null;
 
-// Concurrency limits
-const dbLimit = pLimit(40);  // Database can handle more
-const llmLimit = pLimit(15); // OpenAI rate limits
+// Concurrency limits - Conservative to prevent resource exhaustion
+const dbLimit = pLimit(10);  // Reduced to prevent connection pool exhaustion
+const llmLimit = pLimit(5);  // Reduced to prevent OpenAI rate limiting
 
 interface MatchResult {
   matched: boolean;
