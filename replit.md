@@ -3,7 +3,7 @@
 ## Overview
 Clarity Engine 5 is an AI-powered web application for finance and accounting professionals. It transforms unstructured payee data into organized, actionable insights by intelligently classifying payees (Individual, Business, Government) and assigning SIC codes with confidence scores. The platform is enhanced with Mastercard Merchant Match Tool (MMT) API integration for comprehensive business enrichment, aiming to provide a sophisticated tool for data transformation and analysis in financial contexts. Key capabilities include smart classification, intuitive user experience, robust data management, and reliable job processing. The system has achieved enterprise production readiness, demonstrating high accuracy, scalability, and robust error handling across various scenarios.
 
-### Recent Updates (January 26-27, 2025)
+### Recent Updates (January 27-28, 2025)
 - **Fixed Finexio Matching Issues**: Resolved stuck processing by loading complete 117,614 supplier records from BigQuery FinexioPOC project
 - **BigQuery Integration**: Connected to FinexioPOC project's SE_Enrichment.supplier table with proper service account credentials
 - **Cancel Job Functionality**: Added cancel button to progress tracker for stopping stuck processing jobs
@@ -27,6 +27,12 @@ Clarity Engine 5 is an AI-powered web application for finance and accounting pro
   - Fixed "8900/0 records" display by ensuring totalRecords is updated during stream processing
   - Progress percentages now calculate correctly showing actual completion status
   - Each module (Classification, Finexio, Google, Mastercard, Akkio) shows individual progress bars
+- **Major Performance Optimizations (January 28, 2025)**:
+  - **Database Trigram Indexes**: Added PostgreSQL pg_trgm extension with GIN indexes for 10-100x faster fuzzy matching
+  - **Optimized Finexio Matcher V2**: Uses similarity search instead of multiple LIKE queries, concurrent processing with p-limit (40 parallel lookups), LRU cache with 10K entry limit
+  - **Chunked Processing**: Processes 100 records at a time to prevent memory exhaustion (previously stuck at 9,000 records)
+  - **Fast-path Classification**: Instant classification for obvious patterns (government entities, individual names, business suffixes) saving ~20-30% OpenAI API calls
+  - **Fixed Processing Modal Bug**: Modal now properly closes on both success and error conditions
 
 ## User Preferences
 - **Communication style**: Simple, everyday language

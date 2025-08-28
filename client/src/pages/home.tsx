@@ -271,6 +271,7 @@ export default function Home() {
       setSelectedFile(null);
       setPreviewData(null);
       setSelectedColumn("");
+      setShowProcessingModal(false); // Close the modal on success
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -282,6 +283,8 @@ export default function Home() {
         description: error.message,
         variant: "destructive",
       });
+      setShowProcessingModal(false); // Close the modal on error
+      setIsUploading(false); // Reset uploading state
     },
   });
 

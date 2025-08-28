@@ -1161,11 +1161,11 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
     for (const pattern of govPatterns) {
       if (cleanName.includes(pattern)) {
         return {
-          type: 'Government',
+          payeeType: 'Government',
           confidence: 0.95,
           reasoning: `Contains government keyword: ${pattern}`,
-          sicCode: { code: '9199', title: 'General Government, NEC' },
-          naicsCode: { code: '921190', title: 'Other General Government Support' }
+          sicCode: '9199',
+          naicsCode: '921190'
         };
       }
     }
@@ -1181,11 +1181,11 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
       
       if (!hasBusinessSuffix) {
         return {
-          type: 'Individual',
+          payeeType: 'Individual',
           confidence: 0.90,
           reasoning: 'Name follows FirstName LastName pattern',
-          sicCode: { code: '8811', title: 'Private Households' },
-          naicsCode: { code: '814110', title: 'Private Households' }
+          sicCode: '8811',
+          naicsCode: '814110'
         };
       }
     }
@@ -1200,11 +1200,11 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
     for (const suffix of businessSuffixes) {
       if (cleanName.endsWith(suffix) || cleanName.endsWith(suffix + '.')) {
         return {
-          type: 'Business',
+          payeeType: 'Business',
           confidence: 0.95,
           reasoning: `Contains business suffix: ${suffix}`,
-          sicCode: { code: '7389', title: 'Business Services, NEC' },
-          naicsCode: { code: '561499', title: 'All Other Business Support Services' }
+          sicCode: '7389',
+          naicsCode: '561499'
         };
       }
     }
@@ -1232,7 +1232,7 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
     // Try fast-path classification first for obvious patterns
     const fastPathResult = this.tryFastPathClassification(payeeData.originalName);
     if (fastPathResult) {
-      console.log(`⚡ Fast-path classification for "${payeeData.originalName}": ${fastPathResult.type} (${(fastPathResult.confidence * 100).toFixed(0)}% confidence)`);
+      console.log(`⚡ Fast-path classification for "${payeeData.originalName}": ${fastPathResult.payeeType} (${(fastPathResult.confidence * 100).toFixed(0)}% confidence)`);
       result = fastPathResult;
     } else {
       // Perform OpenAI classification for non-obvious cases
