@@ -1464,11 +1464,12 @@ export function ClassificationViewer({ batchId, onBack }: ClassificationViewerPr
                                 
                                 {/* Finexio Match Information - Always Show */}
                                 {(() => {
-                                  // Use payeeMatches data if available, otherwise fall back to finexioMatchScore
-                                  const finexioScore = selectedClassification.payeeMatches?.[0]?.finexioMatchScore ?? 
-                                                      selectedClassification.finexioMatchScore ?? 0;
-                                  const matchedSupplier = selectedClassification.payeeMatches?.[0]?.bigQueryPayeeName ?? 
-                                                         selectedClassification.finexioSupplierName;
+                                  // Use the actual fields from the API response
+                                  const finexioScore = selectedClassification.finexioConfidence 
+                                    ? Math.round(selectedClassification.finexioConfidence * 100) 
+                                    : 0;
+                                  const matchedSupplier = selectedClassification.finexioSupplierName || 
+                                                         selectedClassification.finexioSupplierId;
                                   
                                   return (
                                     <div className={`p-4 rounded-lg space-y-3 border ${
@@ -1562,47 +1563,38 @@ export function ClassificationViewer({ batchId, onBack }: ClassificationViewerPr
                                           )}
                                         </div>
                                     
-                                    {/* Show match details from payeeMatches if available */}
-                                    {selectedClassification.payeeMatches && selectedClassification.payeeMatches[0] && (
+                                    {/* Show match details if Finexio data is available */}
+                                    {selectedClassification.finexioSupplierId && (
                                       <>
                                         <div>
                                           <label className={`text-xs font-medium ${
-                                            selectedClassification.payeeMatches[0].finexioMatchScore >= 85 ? 'text-green-700' : 'text-orange-700'
+                                            finexioScore >= 85 ? 'text-green-700' : 'text-orange-700'
                                           }`}>Matched Supplier</label>
                                           <p className={`font-medium ${
-                                            selectedClassification.payeeMatches[0].finexioMatchScore >= 85 ? 'text-green-900' : 'text-orange-900'
-                                          }`}>{selectedClassification.payeeMatches[0].bigQueryPayeeName}</p>
+                                            finexioScore >= 85 ? 'text-green-900' : 'text-orange-900'
+                                          }`}>{selectedClassification.finexioSupplierName || selectedClassification.finexioSupplierId}</p>
                                         </div>
                                         
-                                        {selectedClassification.payeeMatches[0].matchType && (
-                                          <div>
-                                            <label className={`text-xs font-medium ${
-                                              selectedClassification.payeeMatches[0].finexioMatchScore >= 85 ? 'text-green-700' : 'text-orange-700'
-                                            }`}>Match Methodology</label>
-                                            <p className={`${
-                                              selectedClassification.payeeMatches[0].finexioMatchScore >= 85 ? 'text-green-900' : 'text-orange-900'
-                                            }`}>
-                                              {selectedClassification.payeeMatches[0].matchType === 'exact' ? 'Deterministic Match' :
-                                               selectedClassification.payeeMatches[0].matchType === 'ai_enhanced' ? 'AI Enhanced (OpenAI Fallback)' :
-                                               selectedClassification.payeeMatches[0].matchType === 'prefix' ? 'Deterministic Prefix Match' :
-                                               selectedClassification.payeeMatches[0].matchType === 'smart_partial' ? 'Smart Partial Match' :
-                                               selectedClassification.payeeMatches[0].matchType === 'contains' ? 'Contains Match' :
-                                               selectedClassification.payeeMatches[0].matchType}
-                                            </p>
-                                          </div>
-                                        )}
+                                        <div>
+                                          <label className={`text-xs font-medium ${
+                                            finexioScore >= 85 ? 'text-green-700' : 'text-orange-700'
+                                          }`}>Supplier ID</label>
+                                          <p className={`${
+                                            finexioScore >= 85 ? 'text-green-900' : 'text-orange-900'
+                                          }`}>{selectedClassification.finexioSupplierId}</p>
+                                        </div>
                                         
-                                        {selectedClassification.payeeMatches[0].matchReasoning && (
+                                        {selectedClassification.finexioMatchReasoning && (
                                           <div>
                                             <label className={`text-xs font-medium ${
-                                              selectedClassification.payeeMatches[0].finexioMatchScore >= 85 ? 'text-green-700' : 'text-orange-700'
+                                              finexioScore >= 85 ? 'text-green-700' : 'text-orange-700'
                                             }`}>Match Reasoning</label>
                                             <div className={`p-2 rounded text-xs mt-1 ${
-                                              selectedClassification.payeeMatches[0].finexioMatchScore >= 85 
+                                              finexioScore >= 85 
                                                 ? 'bg-green-100 text-green-800'
                                                 : 'bg-orange-100 text-orange-800'
                                             }`}>
-                                              {selectedClassification.payeeMatches[0].matchReasoning}
+                                              {selectedClassification.finexioMatchReasoning}
                                             </div>
                                           </div>
                                         )}
