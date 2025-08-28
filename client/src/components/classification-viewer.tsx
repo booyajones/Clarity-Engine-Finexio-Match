@@ -1617,7 +1617,7 @@ export function ClassificationViewer({ batchId, onBack }: ClassificationViewerPr
                                       </div>
                                     )}
                                     
-                                    {(!selectedClassification.payeeMatches || selectedClassification.payeeMatches.length === 0) && (!selectedClassification.finexioMatchScore || selectedClassification.finexioMatchScore === 0) && (
+                                    {!selectedClassification.finexioSupplierId && (
                                       <div className="bg-gray-100 p-2 rounded text-xs text-gray-700 mt-1">
                                         No matching supplier found in the Finexio network. This payee may be new or not yet registered with Finexio.
                                       </div>
