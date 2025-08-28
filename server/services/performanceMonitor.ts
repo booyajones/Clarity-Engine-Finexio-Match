@@ -6,17 +6,9 @@
 import { register, Counter, Histogram, Gauge, collectDefaultMetrics } from 'prom-client';
 import pino from 'pino';
 
-// Initialize structured logging with pino
+// Initialize structured logging with pino (simplified for compatibility)
 export const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-      translateTime: 'SYS:standard',
-      ignore: 'pid,hostname'
-    }
-  }
+  level: process.env.LOG_LEVEL || 'info'
 });
 
 // Collect default metrics (CPU, memory, etc.)

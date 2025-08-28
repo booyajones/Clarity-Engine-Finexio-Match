@@ -3,6 +3,7 @@ import memoryMonitor from '../utils/memoryMonitor';
 import { supplierCache, classificationCache, queryCache } from '../utils/performanceOptimizer';
 import os from 'os';
 import { getMetrics } from '../services/performanceMonitor';
+import { batchWatchdog } from '../services/batchWatchdog';
 
 const router = Router();
 
@@ -162,6 +163,29 @@ router.post('/gc', (req, res) => {
     res.status(503).json({
       error: 'Garbage collection not exposed. Run Node.js with --expose-gc flag'
     });
+  }
+});
+
+// Force complete stuck batches
+router.post('/force-complete/:batchId', async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    await batchWatchdog.forceCompleteBatch(parseInt(batchId));
+    res.json({ success: true, message: `Batch ${batchId} force completed` });
+  } catch (error) {
+    console.error('Error force completing batch:', error);
+    res.status(500).json({ error: 'Failed to force complete batch' });
+  }
+});
+
+// Check stuck batches
+router.get('/stuck-batches', async (req, res) => {
+  try {
+    const stuckBatches = await batchWatchdog.checkStuckBatches();
+    res.json({ stuckBatches });
+  } catch (error) {
+    console.error('Error checking stuck batches:', error);
+    res.status(500).json({ error: 'Failed to check stuck batches' });
   }
 });
 

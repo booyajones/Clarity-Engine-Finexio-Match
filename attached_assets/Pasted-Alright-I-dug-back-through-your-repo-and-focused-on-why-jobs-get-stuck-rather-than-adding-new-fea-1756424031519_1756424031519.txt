@@ -1,0 +1,259 @@
+Alright, I dug back through your repo and focused on “why jobs get stuck” rather than adding new features. Here’s what’s actually biting you, plus tight fixes you can hand to your Replit LLM today.
+
+---
+
+# Where the stalls come from
+
+## 1) Bull jobs that never resolve
+
+**Symptom.** Jobs sit in “active” or keep flipping “stalled → waiting” and never finish.
+
+**Why.** Two common patterns:
+
+* The processor is `async` but you also pass the `done` callback. That can leave the job unresolved.
+* The handler never returns the promise for inner work, so Bull never sees completion.
+
+**Fix.** Use one style only, and always return the promise.
+
+```ts
+// ❌ anti-pattern
+queue.process(async (job, done) => {
+  await doWork(job.data);   // resolve here
+  done();                   // and again here → job can hang
+});
+
+// ✅ correct
+queue.process(async job => {
+  return doWork(job.data);
+});
+```
+
+Add a **per-job timeout** wrapper so a slow dependency can’t strand the worker:
+
+```ts
+function withTimeout<T>(p: Promise<T>, ms = 15000) {
+  return Promise.race([
+    p,
+    new Promise<never>((_, r) => setTimeout(() => r(new Error('timeout')), ms))
+  ]);
+}
+
+queue.process(async job => withTimeout(doWork(job.data), Number(process.env.JOB_TIMEOUT || 15000)));
+```
+
+Your README shows Bull as the job system and a batch orchestrator on top of it, so the pattern above fits your stack. ([GitHub][1])
+
+---
+
+## 2) Event loop blocking in “heavy” steps
+
+**Symptom.** Many jobs go “stalled” at once during big batches.
+
+**Why.** CPU-heavy string work or large in-memory arrays block the event loop, so Bull can’t send heartbeats. That triggers Bull’s stalled watchdog which requeues work, creating an endless loop.
+
+**Fix.**
+
+* Keep concurrency bounded with `p-limit` per stage. Your platform already runs parallel modules; make the limits explicit so you saturate cores without swamping the loop. Suggested caps: classification 12–20. Finexio DB 24–32. Address 10–15. Mastercard 8–12. ([GitHub][1])
+* For any still-heavy scoring, yield between items:
+
+```ts
+for (const c of candidates) {
+  score(c);
+  if ((i++ & 7) === 0) await new Promise(r => setImmediate(r)); // cooperative yield
+}
+```
+
+* If a loop still pegs CPU, offload to a Node `Worker` for that one hot function.
+
+---
+
+## 3) Queue config that fights your DB pool
+
+**Symptom.** Jobs “hang” when you set Finexio matching high and your Postgres pool is \~10–20.
+
+**Why.** 40–100 concurrent match tasks contend for a 10–20 connection pool. Requests queue. Heartbeats miss. Jobs requeue as “stalled”.
+
+**Fix.** Align per-stage concurrency with pool size and add a global limiter:
+
+```ts
+import pLimit from 'p-limit';
+export const matchLimit = pLimit(Number(process.env.FINEXIO_LIMIT || 24));
+export const classifyLimit = pLimit(Number(process.env.CLASSIFY_LIMIT || 16));
+
+await Promise.all(rows.map(r => matchLimit(() => matchOne(r))));
+```
+
+Your README declares Postgres + Drizzle and parallel stages; this is the intended knob. ([GitHub][1])
+
+---
+
+## 4) “Completion” logic that can wait forever
+
+**Symptom.** Batches sit at 95–99% forever.
+
+**Why.** The orchestrator waits for all stage flags, but one stage can lose a callback or a row keeps “in\_progress” after a crash. You already shipped utilities like **complete-batch** and **fix-stuck-batch**, which tells me you’ve seen orphaned states. Wire those guardrails into the runtime. ([GitHub][1])
+
+**Fix.**
+
+* Mark every row with a **heartbeat timestamp** per stage. If `now - heartbeat > TTL`, auto-fail that row and continue.
+* Add a **batch watchdog** that runs every minute: any batch with no progress in N minutes gets nudged, and any “in\_progress” rows older than TTL get requeued or failed.
+
+```ts
+// every N seconds inside each long step
+await db.execute(sql`UPDATE rows SET heartbeat=now() WHERE id=${row.id}`);
+```
+
+---
+
+## 5) Redis and HTTP socket starvation
+
+**Symptom.** Everything freezes briefly then “unsticks.”
+
+**Why.** Default HTTP agents open too many short-lived sockets. Redis defaults can also churn under load.
+
+**Fix.**
+
+* Use a shared **keep-alive** agent for all HTTP clients, including OpenAI and Google Maps.
+* Configure ioredis with sane retry/backoff and `maxRetriesPerRequest: null` so transient blips don’t nuke the process.
+
+```ts
+import { Agent } from 'undici';
+globalThis.fetch = (url, opts={}) =>
+  fetch(url, { ...opts, dispatcher: new Agent({ keepAliveTimeout: 30_000, keepAliveMaxTimeout: 60_000 })});
+```
+
+Your backend stack lists Redis and external APIs. This hardening reduces “micro-stalls.” ([GitHub][1])
+
+---
+
+## 6) Long SQL scans or locks in hot paths
+
+**Symptom.** Matching calls crawl or freeze during supplier syncs.
+
+**Why.** Leading-wildcard LIKE or function-wrapped columns force sequential scans. A full supplier refresh can lock or thrash the same table the matcher reads.
+
+**Fix.** You already have scripts for proper trigram indexes and “production indexes.” Run them and switch your candidate query to **trigram similarity** with a short list, then score. Also, perform supplier refresh into a **staging table** and swap with `ALTER TABLE ... RENAME` to avoid read contention. Your repo includes `add-proper-trigram-indexes.sql`, which is exactly what’s needed. ([GitHub][1])
+
+---
+
+## 7) Mastercard async stage holds the batch
+
+**Symptom.** Batches never complete when Mastercard is enabled.
+
+**Why.** You submit the batch but the webhook never fires or a record never transitions. The orchestrator waits for “all done” rather than “done or failed with budget.”
+
+**Fix.** Give Mastercard an SLA:
+
+* For each submitted record, if no webhook within **X minutes**, mark `timeout` and move on.
+* Keep a slow-lane queue to retry those timeouts out-of-band so the **primary batch can finish**.
+
+Your README calls out an async Mastercard module with webhooks, so enforce a timeout budget per record. ([GitHub][1])
+
+---
+
+# Drop-in improvements
+
+## A) Bull queues, stall-proof setup
+
+```ts
+import Bull from 'bull';
+
+export const q = new Bull('pipeline', process.env.REDIS_URL, {
+  defaultJobOptions: {
+    removeOnComplete: 10_000,
+    removeOnFail: 5000,
+    attempts: 4,
+    backoff: { type: 'exponential', delay: 1000 }  // jitter optional
+  },
+  settings: {
+    lockDuration: 30000,         // aligns with your step time
+    stalledInterval: 15000,      // detect stalls faster
+    maxStalledCount: 2,          // don't spin forever
+    guardInterval: 5000,
+    retryProcessDelay: 2000
+  },
+  limiter: { max: 200, duration: 1000 } // global rate-limit safety
+});
+
+// one style, one return
+q.process(Number(process.env.WORKERS || 4), async job => withTimeout(runJob(job), 15000));
+
+// visibility
+q.on('stalled', j => log.warn({ jobId: j.jobId }, 'job stalled'));
+q.on('failed', (j, err) => log.error({ jobId: j.id, err }, 'job failed'));
+```
+
+## B) Orchestrator watchdog
+
+```ts
+// run every 60s
+async function watchdog() {
+  // rows “in_progress” but heartbeat older than 5 minutes → requeue
+  await db.execute(sql`
+    UPDATE rows
+    SET status='queued', retries = retries + 1
+    WHERE status='in_progress' AND now() - heartbeat > interval '5 minutes'
+    RETURNING id
+  `);
+
+  // batches with no progress in 10 minutes → nudge / mark partial_complete
+  await db.execute(sql`
+    UPDATE batches
+    SET status='partial_complete'
+    WHERE status='processing' AND now() - last_progress > interval '10 minutes'
+  `);
+}
+```
+
+You already keep admin scripts like **fix-stuck-batch.js** and **complete-batch.js**. Bake that logic into the app so it’s automatic. ([GitHub][1])
+
+## C) Memory-safe streaming everywhere
+
+* Process **sub-batches of 200–300**.
+* Use per-stage `p-limit` caps.
+* Flush upserts every 200 rows.
+* Clear arrays and call `global.gc?.()` if enabled.
+  Your README explicitly describes stream processing and sub-batches, so enforce those caps uniformly. ([GitHub][1])
+
+## D) Postgres pool and timeouts
+
+```ts
+import { Pool } from 'pg';
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: Number(process.env.PG_POOL_MAX || 20),
+  idleTimeoutMillis: 10_000,
+  statement_timeout: 8_000,
+  query_timeout: 10_000
+});
+pool.on('error', e => log.error({ e }, 'pg pool error'));
+```
+
+## E) “Done is better than perfect” stage budgets
+
+* **Classification.** 15 s budget per call, 3–4 retries, temp 0, JSON mode. Parallel 12–20.
+* **Finexio match.** Trigram SQL to get top 5–10, score, early-exit ≥0.96 sim with state match.
+* **Address.** 10–12 in flight. Cache normalized requests for 24h.
+* **Mastercard.** Submit in 100–200 chunks. Timebox per record. Slow-lane retries.
+
+All of these match the modules and constraints in your README. ([GitHub][1])
+
+---
+
+# Quick diagnostic checklist you can run now
+
+1. **Bull UI or `bull-board`:** look for a single queue with huge “active” and rising “stalled”. If yes, lower that stage’s concurrency to match your PG pool and add the timeout wrapper. ([GitHub][1])
+2. **`pg_stat_activity`:** any long-running queries or waits during supplier sync. If yes, stage-table swap and run the trigram index scripts. ([GitHub][1])
+3. **Logs:** find jobs missing a final “completed” log line. If they also lack “failed”, they likely didn’t return a promise. Swap the processor to the “return only” style above.
+4. **Heap/CPU:** during a stall, if CPU is near 100% of one core and heap steady, it’s loop-bound. Add `setImmediate` yields or a worker thread for that scoring.
+5. **Mastercard:** list records in “submitted” older than your SLA. If a cluster of them blocks the batch, enable “partial\_complete” and route those records to a retry queue.
+
+---
+
+## Bottom line
+
+Jobs are getting stuck for boring reasons: unresolved promises, event-loop blocking under too-high concurrency, and steps waiting forever on external systems. The changes above keep the loop breathing, make every job resolve or time out, and give the orchestrator an automatic way to finish batches even when a few records misbehave.
+
+If you want, I can turn this into three PRs: queue config + processors, orchestrator watchdog + timeouts, and DB matching + supplier-sync staging. The rest is just setting the per-stage limits and budgets you already designed the system around. ([GitHub][1])
+
+[1]: https://github.com/booyajones/Clarity-Engine-5 "GitHub - booyajones/Clarity-Engine-5"

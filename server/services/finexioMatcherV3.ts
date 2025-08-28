@@ -14,11 +14,12 @@ import { db } from '../db';
 import { cachedSuppliers } from '@shared/schema';
 import OpenAI from 'openai';
 import pLimit from 'p-limit';
+import { withTimeout } from '../utils/jobTimeout';
 
 // Initialize OpenAI if available
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  timeout: 15000,
+  timeout: 8000, // Reduced timeout to prevent hanging
   maxRetries: 2
 }) : null;
 
@@ -105,8 +106,12 @@ export class FinexioMatcherV3 {
       return cached;
     }
     
-    // Step 1: Try exact match first (super fast)
-    const exactMatch = await this.tryExactMatch(payeeName, normalized);
+    // Step 1: Try exact match first (super fast) - with timeout
+    const exactMatch = await withTimeout(
+      this.tryExactMatch(payeeName, normalized),
+      5000,
+      'Exact match timeout'
+    ).catch(() => null);
     if (exactMatch) {
       const result = {
         matched: true,
@@ -119,8 +124,12 @@ export class FinexioMatcherV3 {
       return result;
     }
     
-    // Step 2: Get top candidates using trigram similarity
-    const candidates = await this.findCandidates(normalized);
+    // Step 2: Get top candidates using trigram similarity - with timeout
+    const candidates = await withTimeout(
+      this.findCandidates(normalized),
+      8000,
+      'Candidate search timeout'
+    ).catch(() => []);
     
     if (candidates.length === 0) {
       return {
@@ -148,13 +157,17 @@ export class FinexioMatcherV3 {
       }
     }
     
-    // Step 4: Use OpenAI for ambiguous cases (only if available)
+    // Step 4: Use OpenAI for ambiguous cases (only if available) - with timeout
     if (openai && candidates.length > 0) {
       const topCandidates = candidates.slice(0, 5); // Only send top 5 to OpenAI
-      const llmResult = await this.judgeWithLLM(
-        { name: payeeName, ...context },
-        topCandidates
-      );
+      const llmResult = await withTimeout(
+        this.judgeWithLLM(
+          { name: payeeName, ...context },
+          topCandidates
+        ),
+        8000,
+        'LLM judge timeout'
+      ).catch(() => ({ matched: false, confidence: 0, supplierId: null, reasoning: 'LLM timeout' }));
       
       if (llmResult.matched && llmResult.confidence >= 0.85) {
         const result = {

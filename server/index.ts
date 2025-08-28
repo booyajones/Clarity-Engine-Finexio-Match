@@ -4,6 +4,7 @@ import { setupVite, serveStatic, log } from "./vite";
 // STRIPPED: Removed 90% of background services for single-customer use
 import { mastercardApi } from "./services/mastercardApi";
 import { getMastercardWorker } from "./services/mastercardWorker";
+import { batchWatchdog } from "./services/batchWatchdog";
 
 const app = express();
 // Security and optimization middleware
@@ -53,6 +54,10 @@ app.use((req, res, next) => {
       mastercardWorker.start();
       console.log('📡 Mastercard worker started for polling search results');
     }
+    
+    // Start batch watchdog to prevent stalled jobs
+    batchWatchdog.start();
+    console.log('🔍 Batch watchdog started to monitor stuck jobs');
     
     const server = await registerRoutes(app);
     
