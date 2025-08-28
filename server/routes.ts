@@ -1024,6 +1024,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           isExcluded: c.isExcluded,
           exclusionKeyword: c.exclusionKeyword,
           createdAt: c.createdAt,
+          // Include Finexio matching fields
+          finexioSupplierId: c.finexioSupplierId,
+          finexioSupplierName: c.finexioSupplierName,
+          finexioConfidence: c.finexioConfidence,
+          finexioMatchReasoning: c.finexioMatchReasoning,
           // Include Mastercard enrichment fields
           mastercardMatchStatus: c.mastercardMatchStatus,
           mastercardMatchConfidence: c.mastercardMatchConfidence,
