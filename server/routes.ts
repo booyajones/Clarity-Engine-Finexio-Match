@@ -2318,9 +2318,47 @@ Also provide a SIC code and description if applicable. Respond in JSON format:
     }
   });
 
+  // Smart cache management endpoints
+  app.get('/api/cache/stats', async (req, res) => {
+    try {
+      const { smartCache } = await import('./services/smartSupplierCache');
+      const stats = await smartCache.getCacheStats();
+      res.json(stats);
+    } catch (error) {
+      console.error('Error getting cache stats:', error);
+      res.status(500).json({ error: 'Failed to get cache stats' });
+    }
+  });
+  
+  app.post('/api/cache/sync', async (req, res) => {
+    try {
+      const { smartCache } = await import('./services/smartSupplierCache');
+      const { source = 'sample' } = req.body;
+      
+      let count = 0;
+      if (source === 'bigquery') {
+        count = await smartCache.syncFromBigQuery();
+      } else {
+        count = await smartCache.loadSampleData();
+      }
+      
+      res.json({ 
+        success: true, 
+        recordsSynced: count,
+        source: source
+      });
+    } catch (error: any) {
+      console.error('Error syncing cache:', error);
+      res.status(500).json({ 
+        error: 'Failed to sync cache',
+        details: error.message 
+      });
+    }
+  });
+  
   // 404 handler for unmatched routes
   app.use('/api/*', notFoundHandler);
-  
+
   // Global error handler (must be last)
   app.use(errorHandler);
   

@@ -1,87 +1,9 @@
-# Clarity Engine 5 - Payee Intelligence Platform
+## Clarity Engine 5 - Payee Intelligence Platform
 
-## Overview
-Clarity Engine 5 is an AI-powered web application for finance and accounting professionals. It transforms unstructured payee data into organized, actionable insights by intelligently classifying payees (Individual, Business, Government) and assigning SIC codes with confidence scores. The platform is enhanced with Mastercard Merchant Match Tool (MMT) API integration for comprehensive business enrichment, aiming to provide a sophisticated tool for data transformation and analysis in financial contexts. Key capabilities include smart classification, intuitive user experience, robust data management, and reliable job processing. The system has achieved enterprise production readiness, demonstrating high accuracy, scalability, and robust error handling across various scenarios.
+### Overview
+Clarity Engine 5 is an AI-powered web application designed for finance and accounting professionals. Its core purpose is to transform unstructured payee data into organized, actionable insights by intelligently classifying payees (Individual, Business, Government) and assigning SIC codes with confidence scores. The platform integrates with the Mastercard Merchant Match Tool (MMT) API for comprehensive business enrichment. It aims to be a sophisticated, enterprise-ready tool for financial data transformation and analysis, emphasizing accuracy, scalability, and robust error handling.
 
-### Recent Updates (January 27-29, 2025)
-
-#### January 29, 2025 - Critical Bug Fix: Jobs No Longer Get Stuck
-- **Fixed Critical Finexio Stuck Job Issue**: Jobs were hanging at 221/227 records (97% complete)
-  - Root Cause: When Finexio matching encountered errors, it didn't update the database with confidence values
-  - 6 records (Variable Test, 5x Pepsi-Cola) had NULL finexio_confidence, causing infinite waiting
-  - Solution: Modified error handler to ALWAYS update finexio_confidence field, even on errors
-  - Added batch completion check after Finexio module completes
-  - Jobs now properly transition to "completed" status without manual intervention
-- **Dramatically Improved Delete Performance**:
-  - Reduced API response time from 20+ seconds to ~68ms (300x faster)
-  - Added optimistic UI updates - deleted items disappear immediately
-  - Delete operations complete in under 1 second
-  - Added visual loading spinners for user feedback
-- **Performance Optimizations**:
-  - Skip expensive progress calculations for completed batches
-  - Only calculate real-time updates for actively processing batches
-  - Reduced database queries by 90%
-
-#### January 29, 2025 - Finexio Performance Optimization (Earlier)
-- **Fixed Slow Finexio Matching**: Improved from 2 records/sec to optimized performance
-  - Added proper PostgreSQL trigram indexes (pg_trgm) with expression indexes for case-insensitive searches
-  - Simplified SQL queries to use indexed columns efficiently (removed complex GREATEST calculations)  
-  - Implemented proper concurrency limits (5 DB connections, 3 OpenAI) to prevent connection pool exhaustion
-  - Added LRU cache with TTL (20K entries, 10min TTL) to prevent memory growth
-  - Increased chunk sizes (100-200 records) for better parallelism with proper indexes
-  - Fixed Cancel Job button functionality - now properly cancels running batches
-- **Key Technical Changes**:
-  - Replaced sequential processing with true parallel processing in chunks
-  - All DB queries now properly wrapped with concurrency limits using p-limit
-  - Trigram similarity queries use bitmap index scans for O(log n) performance
-  - Cache reduces repeat lookups significantly
-
-### Recent Updates (January 27-28, 2025)
-- **Fixed Finexio Matching Issues**: Resolved stuck processing by loading complete 117,614 supplier records from BigQuery FinexioPOC project
-- **BigQuery Integration**: Connected to FinexioPOC project's SE_Enrichment.supplier table with proper service account credentials
-- **Cancel Job Functionality**: Added cancel button to progress tracker for stopping stuck processing jobs
-- **Supplier Cache Complete**: Loaded all 117,614 distinct supplier records with payment method distribution (PrintedCheck: 68K, ACH: 26K, Card: 23K, Wire: 66)
-- **Fixed Mastercard State Validation Error**: Resolved "STATE_TOO_LONG" API errors by correcting 21 records that had city names in state field instead of 2-3 character state codes
-- **Mastercard Enrichment Working**: Successfully processing batch 132 with 98 business records after state code fixes
-- **Automated State Validation**: Implemented comprehensive state validation system that auto-corrects invalid state values (city names, full state names) to proper 2-3 character codes at data entry, update, and API submission points
-- **Radical Finexio Performance Optimization (10-20x faster)**: 
-  - Implemented parallel batch processing instead of sequential (100 records at a time)
-  - Reduced AI enhancement threshold from 90% to 95% (disabled by default for maximum speed)
-  - Added in-memory result caching with smart cache management
-  - Optimized database queries: single query instead of multiple, better indexes
-  - Added early exit strategies for high confidence matches
-  - Performance metrics: ~100+ records/second (vs previous ~5-10 records/second)
-- **Fixed Akkio Module Selection Bug**: 
-  - Akkio now only runs when explicitly selected by user in the UI
-  - Fixed progress tracker displaying incorrect "0/400" when Akkio is skipped
-  - When modules are skipped, progress numbers properly reflect completion
-- **Fixed Progress Bar Display Issues**:
-  - Progress bars now properly animate from left to right as processing happens
-  - Fixed "8900/0 records" display by ensuring totalRecords is updated during stream processing
-  - Progress percentages now calculate correctly showing actual completion status
-  - Each module (Classification, Finexio, Google, Mastercard, Akkio) shows individual progress bars
-- **Major Performance Optimizations (January 28, 2025)**:
-  - **Database Trigram Indexes**: Added PostgreSQL pg_trgm extension with GIN indexes for 10-100x faster fuzzy matching
-  - **Optimized Finexio Matcher V2**: Uses similarity search instead of multiple LIKE queries, concurrent processing with p-limit (40 parallel lookups), LRU cache with 10K entry limit
-  - **Chunked Processing**: Processes 100 records at a time to prevent memory exhaustion (previously stuck at 9,000 records)
-  - **Fast-path Classification**: Instant classification for obvious patterns (government entities, individual names, business suffixes) saving ~20-30% OpenAI API calls
-  - **Fixed Processing Modal Bug**: Modal now properly closes on both success and error conditions
-- **January 29, 2025 Critical Bug Fixes**:
-  - Fixed fast-path classification returning incorrect field names (removed `naicsCode`, added proper `sicDescription`)
-  - Fixed database column errors in Finexio matching (changed `supplier_type` to `payment_type`)
-  - Reduced concurrent database connections from 40 to 10 to prevent timeout exhaustion
-  - Fixed toast message persistence by adding 3-second auto-dismiss duration
-  - Fixed modal closing timing - now waits for job to actually start before closing
-  - Optimized database queries to prevent connection pool exhaustion
-- **January 29, 2025 Finexio V3 Streamlined Matcher**:
-  - Replaced 6-algorithm fuzzy matching with streamlined DB→Rules→AI pipeline
-  - Architecture: PostgreSQL trigram indexes → Early-accept rules → OpenAI adjudication
-  - Performance: 10-20x faster (uses DB for retrieval, AI for adjudication only)
-  - Concurrency increased to 20 parallel operations (from 10)
-  - Memory usage reduced by eliminating complex algorithm objects
-  - Added refresh countdown indicator showing "Refresh in Xs" for better UX
-
-## User Preferences
+### User Preferences
 - **Communication style**: Simple, everyday language
 - **Architecture preference**: Each processing stage should be a well-contained, self-contained app for modularity
   - Classification module (standalone)
@@ -91,9 +13,9 @@ Clarity Engine 5 is an AI-powered web application for finance and accounting pro
   - Akkio predictions module (standalone)
   - This allows easy bolt-on additions of new components
 
-## System Architecture
+### System Architecture
 
-### Frontend
+#### Frontend
 - **Framework**: React with TypeScript and Vite
 - **UI Framework**: Shadcn/ui (on Radix UI)
 - **Styling**: Tailwind CSS
@@ -101,67 +23,66 @@ Clarity Engine 5 is an AI-powered web application for finance and accounting pro
 - **Routing**: Wouter
 - **Charts**: Chart.js
 
-### Backend
+#### Backend
 - **Runtime**: Node.js with Express.js
 - **Language**: TypeScript with ES modules
 - **API Style**: RESTful API
 - **File Processing**: Multer for CSV/Excel uploads
 - **Session Management**: Connect-pg-simple for PostgreSQL
-- **Performance**: Optimized with local caching and database indexes
-- **Scheduler Service**: Automatic nightly cache refresh
-- **Batch Job Management**: Advanced system for handling large-scale operations (e.g., 3000+ records for Mastercard, 1000+ for Finexio) with automatic splitting into sub-batches, progress tracking, retry logic, and failure recovery.
-- **Memory Management**: Real-time monitoring, automatic garbage collection, memory leak detection, and alerts.
+- **Performance**: Optimized with local caching and PostgreSQL trigram indexes for fuzzy searching.
+- **Scheduler Service**: Automatic nightly cache refresh.
+- **Batch Job Management**: Advanced system for handling large-scale operations with automatic sub-batching, progress tracking, retry logic, and failure recovery.
+- **Memory Management**: Real-time monitoring, garbage collection, leak detection, and alerts.
 - **Caching System**: LRU caches with size limits, automatic eviction, and TTL management for suppliers, classifications, and queries.
 - **Resource Optimization**: Dynamic database connection pooling, scheduled cleanup, and performance monitoring endpoints.
-- **Deployment Optimization**: Dynamic port binding, enhanced Redis connection handling, comprehensive health check endpoints, 30-second startup timeout protection, graceful shutdown, and memory optimization.
-- **Async Job Processing**: Implemented for Mastercard, using background workers, indefinite polling, and webhooks for real-time notifications, ensuring 100% record processing.
+- **Deployment Optimization**: Dynamic port binding, enhanced Redis connection handling, comprehensive health checks, graceful shutdown, and memory optimization.
+- **Async Job Processing**: Implemented for Mastercard, using background workers, polling, and webhooks for real-time notifications.
 
-### Database
+#### Database
 - **Primary Database**: PostgreSQL via Neon serverless
 - **ORM**: Drizzle ORM
 - **Connection**: @neondatabase/serverless with connection pooling
 - **Schema**: Includes tables for users, upload batches, payee classifications, SIC codes, classification rules, and cached suppliers.
-- **Performance**: PostgreSQL trigram indexes (pg_trgm) for ultra-fast fuzzy searching.
-- **Cache**: Complete Finexio database with 483,227 suppliers for guaranteed matching.
-- **Matching Strategy V3**: Streamlined DB→Rules→AI pipeline:
-  - Step 1: Exact match first (super fast)
-  - Step 2: Trigram similarity search (top 10 candidates)
-  - Step 3: Early-accept rules (exact normalized, high similarity + state match)
-  - Step 4: OpenAI adjudication for ambiguous cases only
-  - Result: 10-20x faster than 6-algorithm approach, more accurate, less memory
+- **Cache**: Complete Finexio database of 483,227 suppliers for matching.
+- **Matching Strategy V3**: Streamlined DB→Rules→AI pipeline for matching:
+  1. Exact match.
+  2. Trigram similarity search (top 10 candidates).
+  3. Early-accept rules (exact normalized, high similarity + state match).
+  4. OpenAI adjudication for ambiguous cases.
+  This approach is designed for speed and accuracy.
 
-### AI/ML Classification Service
+#### AI/ML Classification Service
 - **Core Technology**: OpenAI GPT-4o for advanced payee classification (95%+ accuracy target).
-- **Classification Logic**: Utilizes multi-layered AI and rule-based pattern matching with an intelligent fallback system (OpenAI, rule-based, heuristics, default to Business).
+- **Classification Logic**: Multi-layered AI and rule-based pattern matching with intelligent fallback (OpenAI, rule-based, heuristics, default to Business).
 - **Confidence Scoring**: High-confidence results are processed; lower confidence results are flagged for review.
 - **SIC Code Assignment**: Automatic industry classification.
 - **Duplicate Detection**: Advanced normalization and intelligent duplicate flagging.
 - **Processing Order**: Google Address validation → Finexio matching → Mastercard → Akkio.
-- **Intelligent Address Enhancement**: OpenAI-powered system for selective address enhancement.
-- **Akkio Payment Prediction**: Integrated as the final enrichment step for payment method and outcome prediction.
+- **Intelligent Address Enhancement**: OpenAI-powered selective address enhancement.
+- **Akkio Payment Prediction**: Integrated for payment method and outcome prediction.
 - **Keyword Exclusion System**: 593 permanent exclusion keywords for government/financial entities.
-- **Sophisticated Fuzzy Matching**: 6-algorithm fuzzy matching system (Levenshtein, Jaro-Winkler, Token Set, Metaphone, N-gram, AI enhancement) for intelligent typo tolerance and variation handling. Uses original business names (not cleaned) for optimal matching accuracy.
-- **Exact Match Enhancements**: Smart variations handling for LLC/INC differences, commas, DBA names, and business suffixes to maximize exact match rate before fuzzy matching.
+- **Sophisticated Fuzzy Matching**: Utilizes a 6-algorithm system (Levenshtein, Jaro-Winkler, Token Set, Metaphone, N-gram, AI enhancement) for typo tolerance and variation handling using original business names.
+- **Exact Match Enhancements**: Smart variations handling (LLC/INC, commas, DBA names, business suffixes) to maximize exact match rate.
 
-### File Processing Pipeline
+#### File Processing Pipeline
 - **Handling**: Asynchronous processing with status tracking.
 - **Support**: CSV and Excel file parsing.
 - **Batch Processing**: Bulk classification with progress tracking.
 - **Error Handling**: Comprehensive reporting and recovery including exponential backoff and retry logic.
 - **Scalability**: Optimized for large datasets with chunked processing, controlled concurrency, and memory management.
 
-### Key Features
-- **Smart Classification**: Multi-layered AI, 95%+ confidence target, OpenAI GPT-4o integration, SIC code assignment.
-- **User Experience**: Drag-and-drop file uploads, real-time processing status, responsive design, accessible UI.
-- **Data Management**: Bulk data processing, export capabilities, comprehensive error handling.
-- **Job Reliability**: Automatic job failure detection, sub-job processing, adaptive batch sizing.
-- **Results Viewing**: Detailed interface for examining classification results, including summary cards, search, filtering, and column sorting.
+#### Key Features
+- **Smart Classification**: AI-driven, high confidence, SIC code assignment.
+- **User Experience**: Drag-and-drop file uploads, real-time processing status, responsive, accessible UI.
+- **Data Management**: Bulk processing, export, comprehensive error handling.
+- **Job Reliability**: Automatic failure detection, sub-job processing, adaptive batch sizing.
+- **Results Viewing**: Detailed interface with summary cards, search, filtering, and sorting.
 - **Tool Toggle Controls**: User-configurable settings to enable/disable Finexio matching and Mastercard enrichment.
 - **System Monitoring**: Real-time memory monitoring, performance metrics, cache statistics, and resource protection.
 
-## External Dependencies
+### External Dependencies
 
-### Core
+#### Core
 - **@neondatabase/serverless**: PostgreSQL database connectivity.
 - **drizzle-orm**: Type-safe database operations.
 - **@tanstack/react-query**: Server state management.
@@ -173,9 +94,3 @@ Clarity Engine 5 is an AI-powered web application for finance and accounting pro
 - **Mastercard Merchant Match Tool (MMT) API**: For business enrichment data.
 - **Akkio API**: For payment prediction and machine learning models.
 - **Google Maps API**: For address validation and geographic data.
-
-### Development Tools
-- **Vite**: Fast development server and building.
-- **TypeScript**: Type safety.
-- **Tailwind CSS**: Utility-first styling.
-- **ESLint/Prettier**: Code quality and formatting.
