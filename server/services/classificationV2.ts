@@ -1165,7 +1165,7 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
           confidence: 0.95,
           reasoning: `Contains government keyword: ${pattern}`,
           sicCode: '9199',
-          naicsCode: '921190'
+          sicDescription: 'General Government, Not Elsewhere Classified'
         };
       }
     }
@@ -1185,7 +1185,7 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
           confidence: 0.90,
           reasoning: 'Name follows FirstName LastName pattern',
           sicCode: '8811',
-          naicsCode: '814110'
+          sicDescription: 'Private Households'
         };
       }
     }
@@ -1204,7 +1204,7 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
           confidence: 0.95,
           reasoning: `Contains business suffix: ${suffix}`,
           sicCode: '7389',
-          naicsCode: '561499'
+          sicDescription: 'Business Services, Not Elsewhere Classified'
         };
       }
     }
