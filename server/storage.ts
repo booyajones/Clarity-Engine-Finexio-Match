@@ -213,11 +213,10 @@ export class DatabaseStorage implements IStorage {
         // Count records that have been processed for Finexio (either matched or attempted)
         const finexioResult = await db.execute(sql`
           SELECT 
-            COUNT(CASE WHEN pm.id IS NOT NULL OR pc.finexio_confidence IS NOT NULL THEN 1 END) as processed_count,
-            COUNT(CASE WHEN pm.finexio_match_score >= 85 THEN 1 END) as matched_count,
+            COUNT(CASE WHEN pc.finexio_confidence IS NOT NULL THEN 1 END) as processed_count,
+            COUNT(CASE WHEN pc.finexio_supplier_id IS NOT NULL THEN 1 END) as matched_count,
             COUNT(*) as total_records
           FROM payee_classifications pc
-          LEFT JOIN payee_matches pm ON pm.classification_id = pc.id
           WHERE pc.batch_id = ${batch.id}
         `);
         
