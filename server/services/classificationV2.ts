@@ -1356,8 +1356,8 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
         finexioMatchingStartedAt: new Date()
       });
 
-      // Import the NEW OPTIMIZED matching service V2
-      const { finexioMatcherV2 } = await import('./optimizedFinexioMatchingV2');
+      // Import the FASTEST matching service
+      const { optimizedFinexioMatching } = await import('./optimizedFinexioMatching');
 
       // Get all classifications for the batch
       const classifications = await storage.getBatchClassifications(batchId);
@@ -1375,8 +1375,9 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
         const chunk = classifications.slice(i, Math.min(i + CHUNK_SIZE, classifications.length));
         const chunkStartTime = Date.now();
         
-        // Process this chunk
-        const results = await finexioMatcherV2.processChunk(chunk, batchId);
+        // Use optimized batch processing
+        const payeeNames = chunk.map(c => c.originalName || c.cleanedName);
+        const results = await optimizedFinexioMatching.batchMatch(payeeNames, 50);
         
         // Count matches
         const chunkMatches = results.filter(r => r.matched).length;
