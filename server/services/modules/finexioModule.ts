@@ -48,17 +48,17 @@ class FinexioModule implements PipelineModule {
       const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
       const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
       
-      // With proper indexes, we can handle larger chunks efficiently
-      let CHUNK_SIZE = 100; // Increased default for optimized queries
+      // Smaller chunks to prevent timeouts and better track progress
+      let CHUNK_SIZE = 50; // Reduced to prevent hangs
       if (heapUsedMB < 100) {
-        CHUNK_SIZE = 200; // Can handle even more with low memory
+        CHUNK_SIZE = 75; // Slightly more with low memory
       } else if (heapUsedMB > 200) {
-        CHUNK_SIZE = 50; // Still conservative if memory is high
+        CHUNK_SIZE = 25; // Much smaller if memory is high
       }
       
       // Adjust for very large batches
       if (totalCount > 5000) {
-        CHUNK_SIZE = Math.min(CHUNK_SIZE, 100);
+        CHUNK_SIZE = Math.min(CHUNK_SIZE, 50);
       }
       
       const chunks = [];
@@ -77,54 +77,93 @@ class FinexioModule implements PipelineModule {
         try {
           // Process ALL records in chunk in parallel using V3 matcher's concurrency control
           const chunkPromises = chunk.map(async (classification) => {
-            try {
-              // Use the new streamlined V3 matcher (DB→Rules→AI)
-              // The V3 matcher internally uses pLimit to control concurrency
-              const result = await finexioMatcherV3.match(
-                classification.cleanedName || classification.originalName,
-                {
-                  city: classification.city,
-                  state: classification.state
-                }
-              );
+            // Add timeout wrapper for each match operation
+            const timeoutPromise = new Promise<{ matched: boolean; error?: boolean; timeout?: boolean }>((resolve) => {
+              setTimeout(() => {
+                console.warn(`⏱️ Timeout for payee ${classification.id}: ${classification.originalName}`);
+                resolve({ matched: false, timeout: true });
+              }, 30000); // 30 second timeout per record
+            });
+            
+            const matchPromise = (async () => {
+              try {
+                console.log(`🔍 Matching payee ${classification.id}: ${classification.cleanedName || classification.originalName}`);
+                
+                // Use the new streamlined V3 matcher (DB→Rules→AI)
+                // The V3 matcher internally uses pLimit to control concurrency
+                const result = await finexioMatcherV3.match(
+                  classification.cleanedName || classification.originalName,
+                  {
+                    city: classification.city,
+                    state: classification.state
+                  }
+                );
 
-              if (result.matched && result.supplierId) {
-                // Update classification with Finexio match
-                await storage.updatePayeeClassification(classification.id, {
-                  finexioSupplierId: result.supplierId,
-                  finexioSupplierName: classification.cleanedName || classification.originalName,
-                  finexioConfidence: result.confidence,
-                  finexioMatchReasoning: `${result.method}: ${result.reasoning}` // Combined method and reasoning
-                });
-                return { matched: true };
-              } else {
-                // Even if no match, record that we attempted matching
-                await storage.updatePayeeClassification(classification.id, {
-                  finexioConfidence: 0, // No match found
-                  finexioMatchReasoning: 'No matching supplier found'
-                });
-                return { matched: false };
+                if (result.matched && result.supplierId) {
+                  // Update classification with Finexio match
+                  await storage.updatePayeeClassification(classification.id, {
+                    finexioSupplierId: result.supplierId,
+                    finexioSupplierName: classification.cleanedName || classification.originalName,
+                    finexioConfidence: result.confidence,
+                    finexioMatchReasoning: `${result.method}: ${result.reasoning}` // Combined method and reasoning
+                  });
+                  return { matched: true };
+                } else {
+                  // Even if no match, record that we attempted matching
+                  await storage.updatePayeeClassification(classification.id, {
+                    finexioConfidence: 0, // No match found
+                    finexioMatchReasoning: 'No matching supplier found'
+                  });
+                  return { matched: false };
+                }
+              } catch (error) {
+                console.error(`Error matching payee ${classification.id}:`, error);
+                
+                // CRITICAL: Always update the database even on errors to prevent stuck jobs
+                try {
+                  await storage.updatePayeeClassification(classification.id, {
+                    finexioConfidence: 0, // Mark as processed but no match
+                    finexioMatchReasoning: `Error during matching: ${error.message || 'Unknown error'}`
+                  });
+                } catch (updateError) {
+                  console.error(`Failed to update error status for payee ${classification.id}:`, updateError);
+                }
+                
+                // Return error but don't fail the whole chunk
+                return { matched: false, error: true };
               }
-            } catch (error) {
-              console.error(`Error matching payee ${classification.id}:`, error);
-              
-              // CRITICAL: Always update the database even on errors to prevent stuck jobs
+            })();
+            
+            // Race between the actual match and timeout
+            const result = await Promise.race([matchPromise, timeoutPromise]);
+            
+            // If timeout occurred, update database to prevent stuck state
+            if (result.timeout) {
               try {
                 await storage.updatePayeeClassification(classification.id, {
-                  finexioConfidence: 0, // Mark as processed but no match
-                  finexioMatchReasoning: `Error during matching: ${error.message || 'Unknown error'}`
+                  finexioConfidence: 0,
+                  finexioMatchReasoning: 'Matching timeout - skipped'
                 });
-              } catch (updateError) {
-                console.error(`Failed to update error status for payee ${classification.id}:`, updateError);
+              } catch (error) {
+                console.error(`Failed to update timeout status for payee ${classification.id}:`, error);
               }
-              
-              // Return error but don't fail the whole chunk
+            }
+            
+            return result;
+          });
+
+          // Use Promise.allSettled instead of Promise.all to continue even if some fail
+          const chunkSettledResults = await Promise.allSettled(chunkPromises);
+          
+          // Extract actual results from settled promises
+          const chunkResults = chunkSettledResults.map((result, index) => {
+            if (result.status === 'fulfilled') {
+              return result.value;
+            } else {
+              console.error(`Failed to process payee at index ${index}:`, result.reason);
               return { matched: false, error: true };
             }
           });
-
-          // Wait for ALL records in chunk to complete in parallel
-          const chunkResults = await Promise.all(chunkPromises);
           
           // Count matches
           const chunkMatches = chunkResults.filter(r => r.matched).length;
