@@ -1379,8 +1379,8 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
         const payeeNames = chunk.map(c => c.originalName || c.cleanedName);
         const results = await optimizedFinexioMatching.batchMatch(payeeNames, 50);
         
-        // Count matches
-        const chunkMatches = results.filter(r => r.matched).length;
+        // Count matches (results is a Map, not an array)
+        const chunkMatches = Array.from(results.values()).filter(r => r !== null).length;
         matchedCount += chunkMatches;
         totalProcessed += chunk.length;
         
