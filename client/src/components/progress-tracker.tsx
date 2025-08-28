@@ -39,16 +39,20 @@ export function ProgressTracker({ batch }: ProgressTrackerProps) {
   const queryClient = useQueryClient();
   
   const cancelJobMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       console.log(`Cancelling batch ${batch.id}...`);
-      return apiRequest.patch(`/api/upload/batches/${batch.id}/cancel`, {});
+      const response = await apiRequest('PATCH', `/api/upload/batches/${batch.id}/cancel`, {});
+      const data = await response.json();
+      console.log(`Cancel response:`, data);
+      return data;
     },
-    onSuccess: () => {
-      console.log(`Batch ${batch.id} cancelled successfully`);
+    onSuccess: (data) => {
+      console.log(`Batch ${batch.id} cancelled successfully:`, data);
       queryClient.invalidateQueries({ queryKey: ['/api/upload/batches'] });
     },
     onError: (error) => {
       console.error(`Failed to cancel batch ${batch.id}:`, error);
+      alert(`Failed to cancel: ${error.message || 'Unknown error'}`);
     }
   });
 
