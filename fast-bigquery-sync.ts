@@ -42,13 +42,13 @@ async function fastBigQuerySync() {
     for (let i = 0; i < rows.length; i += batchSize) {
       const batch = rows.slice(i, i + batchSize);
       
-      // Build unique suppliers with fallback IDs
+      // Build unique suppliers with correct column names
       const suppliers = batch.map((row, index) => {
-        const uniqueId = row.Ref_ID || `ROW_${i + index}_${Date.now()}`;
+        const uniqueId = row.Reference_ID || `ROW_${i + index}_${Date.now()}`;
         return {
           payeeId: `BQ_${uniqueId}`,
-          payeeName: row.Name || '',
-          normalizedName: (row.Name || '').toLowerCase().replace(/[^a-z0-9]/g, ''),
+          payeeName: row.Supplier_Name || '',
+          normalizedName: (row.Supplier_Name || '').toLowerCase().replace(/[^a-z0-9]/g, ''),
           paymentType: row.Payment_Method || row.Delivery_Method || 'CHECK',
         };
       });
