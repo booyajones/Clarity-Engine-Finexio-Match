@@ -1,72 +1,49 @@
 {
-  "cycle": 1,
-  "timestamp": "2025-08-29T01:53:14.781Z",
-  "results": {
-    "passed": 7,
-    "failed": 2,
-    "details": [
-      {
-        "test": "API Error Handling - Invalid Parameters",
-        "status": "PASS"
-      },
-      {
-        "test": "Memory Monitoring Endpoint",
-        "status": "FAIL",
-        "error": "Missing heap memory data"
-      },
-      {
-        "test": "Dashboard Stats Endpoint",
-        "status": "FAIL",
-        "error": "Missing dashboard data"
-      },
-      {
-        "test": "Upload Batches Endpoint",
-        "status": "PASS"
-      },
-      {
-        "test": "Memory Usage Under Normal Load",
-        "status": "PASS"
-      },
-      {
-        "test": "Concurrent API Requests",
-        "status": "PASS"
-      },
-      {
-        "test": "Non-existent Endpoints",
-        "status": "PASS"
-      },
-      {
-        "test": "Invalid HTTP Methods",
-        "status": "PASS"
-      },
-      {
-        "test": "Rate Limiting Protection",
-        "status": "PASS"
-      }
+  "timestamp": "2025-08-29T12:54:00.302Z",
+  "successRate": 82,
+  "metrics": {
+    "totalTests": 11,
+    "passed": 9,
+    "failed": 2
+  },
+  "issues": {
+    "critical": [],
+    "errors": [
+      "Core API Health Check: API healthy: {\"status\":\"healthy\",\"timestamp\":\"2025-08-29T12:53:57.298Z\",\"uptime\":174.509962234,\"checks\":{\"database\":{\"status\":\"ok\",\"responseTime\":436},\"bigQuery\":{\"status\":\"ok\",\"supplierCount\":\"115345\"},\"googleMaps\":{\"status\":\"ok\"},\"openai\":{\"status\":\"ok\"},\"memory\":{\"status\":\"error\",\"usage\":{\"heapUsed\":131,\"heapTotal\":135,\"external\":15,\"rss\":279}}}}",
+      "Cache System Performance: Cache performance: 2ms → 5ms (-150% improvement)"
+    ],
+    "warnings": [
+      "Mastercard service not configured"
     ]
   },
-  "memorySnapshot": {
-    "heapUsed": 89,
-    "heapTotal": 111,
+  "optimizations": [
+    "Add cache hit rate metrics to dashboard",
+    "Enable garbage collection with --expose-gc flag",
+    "Implement pagination for batch listing",
+    "Add file size limit headers for client guidance"
+  ],
+  "systemHealth": {
+    "heapUsed": 131,
+    "heapTotal": 134,
     "current": {
-      "timestamp": "2025-08-29T01:53:06.931Z",
-      "heapUsed": 89,
-      "heapTotal": 111,
-      "rss": 294,
-      "external": 9,
-      "arrayBuffers": 3,
-      "heapUsedPercent": 80.46
+      "timestamp": "2025-08-29T12:53:36.286Z",
+      "heapUsed": 131,
+      "heapTotal": 134,
+      "rss": 278,
+      "external": 15,
+      "arrayBuffers": 4,
+      "heapUsedPercent": 97.53
     },
-    "averageUsage5Min": 80.46,
+    "averageUsage5Min": 88,
     "possibleMemoryLeak": false,
     "system": {
       "totalMemory": 64313,
-      "freeMemory": 34232,
+      "freeMemory": 26863,
       "cpuUsage": {
-        "user": 9977399,
-        "system": 720957
+        "user": 11889280,
+        "system": 1027199
       },
-      "uptime": 11.423356053
+      "uptime": 177.513098232
     }
   }
 }
