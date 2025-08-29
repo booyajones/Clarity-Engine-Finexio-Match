@@ -12,8 +12,8 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY 
 });
 
-// Limit concurrent OpenAI calls to prevent rate limiting
-const classificationLimit = pLimit(16);
+// Maximum concurrent OpenAI calls for massive throughput
+const classificationLimit = pLimit(20);
 
 export interface ClassificationResult {
   payeeType: string;
@@ -62,9 +62,9 @@ class OpenAIClassificationService {
       const payees = await this.extractPayeesFromFile(filePath, payeeColumn, fileExtension);
       console.log(`Extracted ${payees.length} payees from file`);
 
-      // Process in larger batches with multiple payees per API call
-      const CHUNK_SIZE = 25; // Number of payees per OpenAI call
-      const CONCURRENT_CALLS = 10; // Number of concurrent API calls
+      // OPTIMIZED: Send up to 100 payees per API call for reliability
+      const CHUNK_SIZE = 100; // Number of payees per OpenAI call (balanced for speed and reliability)
+      const CONCURRENT_CALLS = 20; // Number of concurrent API calls
       let processedCount = 0;
       const allClassifications = [];
 
@@ -272,7 +272,7 @@ Return a JSON array with one object per payee:
           }
         ],
         response_format: { type: "json_object" },
-        max_completion_tokens: 2000 // Increased for multiple payees
+        max_completion_tokens: 10000 // Appropriate for 100 payees
       });
 
       const result = JSON.parse(response.choices[0].message.content || '{}');
