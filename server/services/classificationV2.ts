@@ -529,6 +529,7 @@ export class OptimizedClassificationService {
         accuracy,
         currentStep: "Starting enrichment",
         progressMessage: `Classification completed! Starting enrichment for ${totalProcessed} records...`,
+        classificationStatus: "completed", // Mark classification as completed
         // Don't set completedAt yet - wait until ALL enrichment is done
       });
       

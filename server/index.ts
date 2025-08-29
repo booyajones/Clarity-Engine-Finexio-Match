@@ -59,6 +59,14 @@ app.use((req, res, next) => {
     batchWatchdog.start();
     console.log('🔍 Batch watchdog started to monitor stuck jobs');
     
+    // Force garbage collection every 30 seconds to manage memory
+    setInterval(() => {
+      if (global.gc) {
+        global.gc();
+        console.log('🧹 Manual garbage collection triggered');
+      }
+    }, 30000);
+    
     const server = await registerRoutes(app);
     
     // Add startup timeout handling

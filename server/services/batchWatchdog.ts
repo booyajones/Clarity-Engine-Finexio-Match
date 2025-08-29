@@ -226,6 +226,31 @@ export class BatchWatchdog {
       throw error;
     }
   }
+
+  /**
+   * Public method to check for stuck batches (exposed via API)
+   * This method is called from monitoring routes
+   */
+  async checkStuckBatches() {
+    const STUCK_THRESHOLD_MINUTES = 10;
+    
+    try {
+      const stuckBatches = await db.execute(sql`
+        SELECT id, status, current_step, created_at, 
+               classification_status, finexio_matching_status,
+               mastercard_enrichment_status, akkio_prediction_status
+        FROM upload_batches
+        WHERE 
+          status IN ('processing', 'enriching', 'classifying')
+          AND created_at < NOW() - INTERVAL '10 minutes'
+      `);
+      
+      return stuckBatches.rows || [];
+    } catch (error) {
+      logger.error({ error }, 'Error checking stuck batches via API');
+      return [];
+    }
+  }
 }
 
 // Create singleton instance

@@ -1194,6 +1194,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get batch classifications for viewing
+  app.get("/api/classifications/:batchId", async (req, res) => {
+    try {
+      const batchId = parseInt(req.params.batchId);
+      const classifications = await storage.getBatchClassifications(batchId);
+      
+      res.json({
+        success: true,
+        data: classifications,
+        count: classifications.length
+      });
+    } catch (error) {
+      console.error("Error fetching classifications:", error);
+      res.status(500).json({ 
+        success: false,
+        error: "Failed to fetch classifications" 
+      });
+    }
+  });
+
   // Export classifications  
   app.get("/api/classifications/export/:id", async (req, res) => {
     try {
