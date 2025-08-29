@@ -1454,6 +1454,30 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
         const payeeNames = chunk.map(c => c.originalName || c.cleanedName);
         const results = await optimizedFinexioMatching.batchMatch(payeeNames, 50);
         
+        // CRITICAL FIX: Actually SAVE the Finexio results to the database!
+        let chunkIndex = 0;
+        for (const classification of chunk) {
+          const payeeName = classification.originalName || classification.cleanedName;
+          const matchResult = results.get(payeeName);
+          
+          if (matchResult && matchResult.supplier) {
+            // Update the database with the match results
+            await storage.updatePayeeClassification(classification.id, {
+              finexioSupplierId: String(matchResult.supplier.id),
+              finexioSupplierName: matchResult.supplier.payeeName || matchResult.supplier.payee_name,
+              finexioConfidence: matchResult.confidence,
+              finexioMatchReasoning: `${matchResult.matchType} match found`
+            });
+          } else {
+            // Mark as no match found
+            await storage.updatePayeeClassification(classification.id, {
+              finexioConfidence: 0,
+              finexioMatchReasoning: 'No matching supplier found'
+            });
+          }
+          chunkIndex++;
+        }
+        
         // Count matches (results is a Map, not an array)
         const chunkMatches = Array.from(results.values()).filter(r => r !== null).length;
         matchedCount += chunkMatches;
