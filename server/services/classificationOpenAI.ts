@@ -44,14 +44,14 @@ class OpenAIClassificationService {
     addressColumns?: any,
     matchingOptions?: any
   ): Promise<void> {
-    console.log(`Starting OpenAI-only classification for batch ${batchId}`);
+    console.log(`Starting optimized OpenAI classification for batch ${batchId}`);
     
     // Update batch status
     await storage.updateUploadBatch(batchId, {
       status: "processing",
       classificationStatus: "in_progress",
       currentStep: "Classification in progress",
-      progressMessage: "Using OpenAI for classification..."
+      progressMessage: "Using optimized OpenAI for classification..."
     });
 
     const abortController = new AbortController();
@@ -62,31 +62,47 @@ class OpenAIClassificationService {
       const payees = await this.extractPayeesFromFile(filePath, payeeColumn, fileExtension);
       console.log(`Extracted ${payees.length} payees from file`);
 
-      // Process in batches for memory efficiency
-      const BATCH_SIZE = 50;
+      // Process in larger batches with multiple payees per API call
+      const CHUNK_SIZE = 25; // Number of payees per OpenAI call
+      const CONCURRENT_CALLS = 10; // Number of concurrent API calls
       let processedCount = 0;
       const allClassifications = [];
 
-      for (let i = 0; i < payees.length; i += BATCH_SIZE) {
-        if (abortController.signal.aborted) {
-          throw new Error('Job cancelled');
-        }
+      // Create chunks of payees
+      const chunks = [];
+      for (let i = 0; i < payees.length; i += CHUNK_SIZE) {
+        chunks.push(payees.slice(i, i + CHUNK_SIZE));
+      }
 
-        const batch = payees.slice(i, i + BATCH_SIZE);
-        console.log(`Processing batch ${Math.floor(i/BATCH_SIZE) + 1}: ${batch.length} payees`);
+      // Process chunks with concurrency limit
+      const limit = pLimit(CONCURRENT_CALLS);
+      const promises = chunks.map((chunk, index) => 
+        limit(async () => {
+          if (abortController.signal.aborted) {
+            throw new Error('Job cancelled');
+          }
 
-        // Classify batch using OpenAI
-        const classifications = await this.classifyBatch(batch, batchId);
+          console.log(`Processing chunk ${index + 1}/${chunks.length}: ${chunk.length} payees`);
+          const classifications = await this.classifyMultiplePayees(chunk, batchId);
+          
+          processedCount += chunk.length;
+          
+          // Update progress periodically
+          if (processedCount % 100 === 0 || processedCount === payees.length) {
+            await storage.updateUploadBatch(batchId, {
+              processedRecords: processedCount,
+              totalRecords: payees.length,
+              progressMessage: `Classified ${processedCount}/${payees.length} records`
+            });
+          }
+          
+          return classifications;
+        })
+      );
+
+      const results = await Promise.all(promises);
+      for (const classifications of results) {
         allClassifications.push(...classifications);
-        
-        processedCount += batch.length;
-        
-        // Update progress
-        await storage.updateUploadBatch(batchId, {
-          processedRecords: processedCount,
-          totalRecords: payees.length,
-          progressMessage: `Classified ${processedCount}/${payees.length} records`
-        });
       }
 
       // Save all classifications
@@ -209,44 +225,107 @@ class OpenAIClassificationService {
     return keys[0];
   }
 
-  private async classifyBatch(payees: PayeeData[], batchId: number): Promise<any[]> {
-    const classifications = [];
-    
-    // Process with concurrency limit
-    const promises = payees.map(payee => 
-      classificationLimit(async () => {
-        try {
-          const result = await this.classifyWithOpenAI(payee);
-          return {
-            batchId,
-            originalName: payee.originalName,
-            cleanedName: payee.originalName.toLowerCase().trim(),
-            payeeType: result.payeeType,
-            confidence: result.confidence,
-            sicCode: result.sicCode,
-            sicDescription: result.sicDescription,
-            reasoning: result.reasoning,
-            status: result.confidence < 0.95 ? "pending-review" : "auto-classified",
-            originalData: payee.originalData
-          };
-        } catch (error) {
-          console.error(`Error classifying ${payee.originalName}:`, error);
-          return {
-            batchId,
-            originalName: payee.originalName,
-            cleanedName: payee.originalName.toLowerCase().trim(),
-            payeeType: "Business",
-            confidence: 0.5,
-            reasoning: `Classification error: ${error.message}`,
-            status: "pending-review",
-            originalData: payee.originalData
-          };
+  private async classifyMultiplePayees(payees: PayeeData[], batchId: number): Promise<any[]> {
+    try {
+      // Send multiple payees to OpenAI in a single call
+      const payeeNames = payees.map(p => p.originalName);
+      const response = await openai.chat.completions.create({
+        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025
+        messages: [
+          {
+            role: "system",
+            content: `You are a financial data classification expert. Classify multiple payees at once.
+            
+CATEGORIES:
+• Individual - Personal names, employees, contractors, students
+• Business - Companies, corporations, brands, stores, restaurants, services
+• Government - Government agencies, departments, municipalities, tax authorities  
+• Insurance - Insurance companies, carriers, brokers
+• Banking - Banks, credit unions, financial institutions
+• Internal Transfer - Internal company transfers only
+
+IMPORTANT RULES:
+1. FedEx, Microsoft, HD Supply, Amazon, Apple, Google, Walmart, Target, etc. are ALWAYS Business
+2. Any company name or brand is Business
+3. Only classify as Individual if it's clearly a person's name with no business context
+4. When in doubt between Individual and Business, choose Business
+5. Provide confidence 0.95-0.99 for clear cases, 0.80-0.94 for less certain
+
+Return a JSON array with one object per payee:
+{
+  "classifications": [
+    {
+      "payeeName": "FedEx",
+      "payeeType": "Business",
+      "confidence": 0.99,
+      "sicCode": "4513",
+      "sicDescription": "Air Courier Services",
+      "reasoning": "FedEx is a major shipping company"
+    },
+    ...
+  ]
+}`
+          },
+          {
+            role: "user",
+            content: `Classify these ${payeeNames.length} payees:\n${payeeNames.map((name, i) => `${i+1}. "${name}"`).join('\n')}`
+          }
+        ],
+        response_format: { type: "json_object" },
+        max_completion_tokens: 2000 // Increased for multiple payees
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || '{}');
+      const classificationsMap = new Map();
+      
+      // Map results back to original payees
+      if (result.classifications && Array.isArray(result.classifications)) {
+        for (const classification of result.classifications) {
+          classificationsMap.set(classification.payeeName, classification);
         }
-      })
-    );
-    
-    const results = await Promise.all(promises);
-    return results;
+      }
+      
+      // Build final classifications array
+      return payees.map(payee => {
+        const classification = classificationsMap.get(payee.originalName) || {};
+        
+        // Ensure Business for known companies
+        const knownBusinesses = ['FEDEX', 'FED EX', 'MICROSOFT', 'HD SUPPLY', 'AMAZON', 'GOOGLE', 'APPLE', 'WALMART', 'TARGET', 'HOME DEPOT', 'BEST BUY', 'UPS'];
+        const upperName = payee.originalName.toUpperCase();
+        
+        if (knownBusinesses.some(company => upperName.includes(company))) {
+          classification.payeeType = 'Business';
+          classification.confidence = Math.max(classification.confidence || 0.95, 0.98);
+        }
+        
+        return {
+          batchId,
+          originalName: payee.originalName,
+          cleanedName: payee.originalName.toLowerCase().trim(),
+          payeeType: classification.payeeType || 'Business',
+          confidence: Math.min(Math.max(classification.confidence || 0.85, 0), 1),
+          sicCode: classification.sicCode || null,
+          sicDescription: classification.sicDescription || null,
+          reasoning: classification.reasoning || `Classified as ${classification.payeeType || 'Business'}`,
+          status: (classification.confidence || 0.85) < 0.95 ? "pending-review" : "auto-classified",
+          originalData: payee.originalData
+        };
+      });
+      
+    } catch (error) {
+      console.error(`Error classifying batch of ${payees.length} payees:`, error);
+      // Return default classifications on error
+      return payees.map(payee => ({
+        batchId,
+        originalName: payee.originalName,
+        cleanedName: payee.originalName.toLowerCase().trim(),
+        payeeType: "Business",
+        confidence: 0.75,
+        reasoning: `Batch classification error: ${error.message}`,
+        status: "pending-review",
+        originalData: payee.originalData
+      }));
+    }
   }
 
   private async classifyWithOpenAI(payee: PayeeData): Promise<ClassificationResult> {
