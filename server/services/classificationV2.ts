@@ -1223,6 +1223,7 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
     // CRITICAL FIX: Add major companies that MUST be classified as Business
     const knownBusinesses = [
       { pattern: 'FEDEX', sic: '4513', desc: 'Air Courier Services' },
+      { pattern: 'FED EX', sic: '4513', desc: 'Air Courier Services' }, // With space
       { pattern: 'FEDERAL EXPRESS', sic: '4513', desc: 'Air Courier Services' },
       { pattern: 'MICROSOFT', sic: '7372', desc: 'Prepackaged Software' },
       { pattern: 'HD SUPPLY', sic: '5039', desc: 'Construction Materials' },
@@ -1239,7 +1240,9 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
       { pattern: 'AT&T', sic: '4813', desc: 'Telephone Communications' },
       { pattern: 'VERIZON', sic: '4813', desc: 'Telephone Communications' },
       { pattern: 'FACEBOOK', sic: '7374', desc: 'Computer Processing and Data Preparation' },
-      { pattern: 'META', sic: '7374', desc: 'Computer Processing and Data Preparation' }
+      { pattern: 'META', sic: '7374', desc: 'Computer Processing and Data Preparation' },
+      { pattern: 'BEST BUY', sic: '5731', desc: 'Electronics Stores' },
+      { pattern: 'BESTBUY', sic: '5731', desc: 'Electronics Stores' }
     ];
     
     // Check for known major businesses FIRST (highest priority)
