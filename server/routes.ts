@@ -35,7 +35,11 @@ function safeParseInt(value: string | undefined, paramName: string): number {
   }
   
   const parsed = parseInt(value);
-  if (isNaN(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+  if (isNaN(parsed) || !Number.isInteger(parsed)) {
+    throw new Error(`Invalid ${paramName}: must be an integer, got: ${value}`);
+  }
+  
+  if (parsed <= 0) {
     throw new Error(`Invalid ${paramName}: must be a positive integer, got: ${value}`);
   }
   
@@ -965,10 +969,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get classifications for viewing with pagination
+  // Get classifications for viewing with pagination - FIXED error handling
   app.get("/api/classifications/:id", async (req, res) => {
     try {
-      const batchId = safeParseInt(req.params.id, "batch ID");
+      const batchIdParam = req.params.id;
+      
+      // CRITICAL FIX: Better validation to prevent 500 errors
+      if (!batchIdParam || batchIdParam.trim() === '') {
+        return res.status(400).json({ 
+          error: 'Missing batch ID', 
+          message: 'Batch ID is required' 
+        });
+      }
+      
+      const batchId = parseInt(batchIdParam);
+      if (isNaN(batchId) || !Number.isInteger(batchId)) {
+        return res.status(400).json({ 
+          error: 'Invalid batch ID', 
+          message: `Batch ID must be an integer, got: ${batchIdParam}` 
+        });
+      }
+      
+      if (batchId <= 0) {
+        return res.status(400).json({ 
+          error: 'Invalid batch ID', 
+          message: `Batch ID must be a positive integer, got: ${batchIdParam}` 
+        });
+      }
+      
       const page = safeParseIntOptional(req.query.page as string, 1);
       const limit = safeParseIntOptional(req.query.limit as string, 100);
       const offset = (page - 1) * limit;
@@ -1238,7 +1266,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      if (isNaN(batchId) || batchId <= 0 || !Number.isInteger(batchId)) {
+      if (isNaN(batchId) || !Number.isInteger(batchId)) {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Invalid batch ID', 
+          message: `Batch ID must be an integer, got: ${batchIdParam}` 
+        });
+      }
+      
+      if (batchId <= 0) {
         return res.status(400).json({ 
           success: false,
           error: 'Invalid batch ID', 

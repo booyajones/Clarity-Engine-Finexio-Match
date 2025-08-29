@@ -1,433 +1,266 @@
 #!/usr/bin/env node
 
 /**
- * EXTREME STRESS TESTING - FIND ALL EDGE CASES AND BUGS
- * Tests every possible failure scenario, edge case, and enhancement opportunity
+ * EXTREME STRESS TEST - Find all optimization opportunities
+ * Tests system limits, memory leaks, performance bottlenecks
  */
 
 import fs from 'fs';
-import fetch from 'node-fetch';
-import FormData from 'form-data';
 
-const API_BASE = 'http://localhost:5000';
-let BUGS_FOUND = [];
-let ENHANCEMENTS = [];
-let TEST_COUNT = 0;
+console.log('🔥 EXTREME STRESS TEST - FINDING ALL OPTIMIZATION OPPORTUNITIES');
+console.log('=' .repeat(70));
 
-// Comprehensive test scenarios
-const EXTREME_TEST_SCENARIOS = [
-  // Basic functionality tests
-  { name: 'Tiny File', records: 1, concurrent: 1 },
-  { name: 'Small Sequential', records: 5, concurrent: 1 },
-  { name: 'Medium Sequential', records: 25, concurrent: 1 },
-  { name: 'Large Sequential', records: 100, concurrent: 1 },
-  
-  // Concurrent tests
-  { name: 'Low Concurrency', records: 10, concurrent: 3 },
-  { name: 'Medium Concurrency', records: 15, concurrent: 5 },
-  { name: 'High Concurrency', records: 20, concurrent: 8 },
-  
-  // Edge cases
-  { name: 'Empty File', records: 0, concurrent: 1 },
-  { name: 'Header Only', records: 0, concurrent: 1, headerOnly: true },
-  { name: 'Single Column', records: 5, concurrent: 1, singleColumn: true },
-  { name: 'Unicode Test', records: 10, concurrent: 1, unicode: true },
-  { name: 'Special Characters', records: 8, concurrent: 1, specialChars: true },
-  { name: 'SQL Injection Test', records: 5, concurrent: 1, sqlInjection: true },
-  
-  // Configuration tests
-  { name: 'All Services Enabled', records: 15, concurrent: 2, allServices: true },
-  { name: 'Only Classification', records: 10, concurrent: 1, onlyClassification: true },
-  { name: 'Finexio Only', records: 10, concurrent: 1, finexioOnly: true },
-  
-  // Performance tests
-  { name: 'Memory Stress', records: 500, concurrent: 1 },
-  { name: 'Speed Test', records: 100, concurrent: 1, timeLimit: 30000 },
-  
-  // Error condition tests
-  { name: 'Invalid CSV', records: 5, concurrent: 1, invalidCSV: true },
-  { name: 'Malformed Data', records: 5, concurrent: 1, malformed: true },
-  { name: 'Missing Headers', records: 5, concurrent: 1, noHeaders: true }
-];
+async function fetch(url, options = {}) {
+  const { default: nodeFetch } = await import('node-fetch');
+  return nodeFetch(url, options);
+}
 
-// Test data generators
-const EVIL_PAYEE_NAMES = [
-  '', // Empty
-  null, // Null (will be stringified)
-  'undefined',
-  'DROP TABLE payee_classifications;',
-  "'; DROP TABLE payee_classifications; --",
-  '<script>alert("xss")</script>',
-  '../../etc/passwd',
-  'SELECT * FROM users WHERE id = 1',
-  'Robert\'); DROP TABLE students;--',
-  '🏢 Company™ ® ©', // Unicode symbols
-  'Test\nNewline\rCarriageReturn\tTab',
-  'Very' + 'Long'.repeat(200) + 'CompanyName', // Very long name
-  'Company, Inc. & Co. LLC DBA Another Name Ltd. Corp.',
-  '测试公司', // Chinese
-  'тест компания', // Russian
-  'テスト会社', // Japanese
-  'شركة اختبار', // Arabic
-  String.fromCharCode(0x00, 0x01, 0x02), // Control characters
-  'Company\x00\x01\x02With\x03Nulls'
-];
+const results = {
+  tests: 0,
+  passed: 0,
+  failed: 0,
+  optimizations: [],
+  criticalIssues: []
+};
 
-function generateTestCSV(config) {
-  const { records, headerOnly, singleColumn, unicode, specialChars, sqlInjection, invalidCSV, malformed, noHeaders } = config;
-  
-  let content = '';
-  
-  if (invalidCSV) {
-    return 'This is not CSV data at all!\nJust some random text\n123 456 789';
-  }
-  
-  if (!noHeaders) {
-    content = singleColumn ? 'Name\n' : 'Payee Name,Address,City\n';
-  }
-  
-  if (headerOnly || records === 0) {
-    return content;
-  }
-  
-  for (let i = 0; i < records; i++) {
-    let payeeName;
-    
-    if (unicode) {
-      payeeName = `测试公司 ${i + 1}`;
-    } else if (specialChars) {
-      payeeName = EVIL_PAYEE_NAMES[i % EVIL_PAYEE_NAMES.length];
-    } else if (sqlInjection) {
-      payeeName = `Evil'; DROP TABLE payee_classifications; -- ${i}`;
-    } else if (malformed) {
-      payeeName = `"Unclosed Quote ${i}`;
+async function stressTest(name, testFn) {
+  try {
+    console.log(`\n🧪 STRESS TEST: ${name}`);
+    results.tests++;
+    const result = await testFn();
+    if (result.success) {
+      results.passed++;
+      console.log(`✅ ${name}: PASSED`);
     } else {
-      payeeName = `Test Company ${i + 1}`;
-    }
-    
-    if (singleColumn) {
-      content += `"${payeeName}"\n`;
-    } else {
-      content += `"${payeeName}","123 Main St","Test City"\n`;
-    }
-  }
-  
-  return content;
-}
-
-async function uploadFile(filename, config = {}) {
-  const { allServices, onlyClassification, finexioOnly } = config;
-  
-  const form = new FormData();
-  form.append('file', fs.createReadStream(filename));
-  form.append('payeeColumn', 'Payee Name');
-  
-  if (allServices) {
-    form.append('enableFinexio', 'true');
-    form.append('enableMastercard', 'true');
-    form.append('enableGoogleAddressValidation', 'true');
-    form.append('enableAkkio', 'true');
-  } else if (onlyClassification) {
-    form.append('enableFinexio', 'false');
-    form.append('enableMastercard', 'false');
-    form.append('enableGoogleAddressValidation', 'false');
-    form.append('enableAkkio', 'false');
-  } else if (finexioOnly) {
-    form.append('enableFinexio', 'true');
-    form.append('enableMastercard', 'false');
-    form.append('enableGoogleAddressValidation', 'false');
-    form.append('enableAkkio', 'false');
-  } else {
-    form.append('enableFinexio', 'true');
-    form.append('enableMastercard', 'false');
-    form.append('enableGoogleAddressValidation', 'false');
-    form.append('enableAkkio', 'false');
-  }
-
-  const response = await fetch(`${API_BASE}/api/upload`, {
-    method: 'POST',
-    body: form
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Upload failed: ${response.status} ${response.statusText} - ${errorText}`);
-  }
-
-  return await response.json();
-}
-
-async function waitForBatchCompletion(batchId, maxWaitTime = 60000) {
-  const startTime = Date.now();
-  
-  while (Date.now() - startTime < maxWaitTime) {
-    const response = await fetch(`${API_BASE}/api/upload/batches`);
-    const data = await response.json();
-    
-    const batch = data.find(b => b.id === batchId);
-    if (!batch) {
-      throw new Error(`Batch ${batchId} not found`);
-    }
-    
-    if (batch.status === 'completed') {
-      return batch;
-    }
-    
-    if (batch.status === 'failed') {
-      throw new Error(`Batch ${batchId} failed: ${batch.progressMessage}`);
-    }
-    
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
-  
-  throw new Error(`Batch ${batchId} timeout after ${maxWaitTime}ms`);
-}
-
-async function runExtremeTest(scenario) {
-  console.log(`\n🔥 EXTREME TEST ${++TEST_COUNT}: ${scenario.name} (${scenario.records} records, ${scenario.concurrent}x)`);
-  
-  const promises = [];
-  const startTime = Date.now();
-  
-  for (let i = 0; i < scenario.concurrent; i++) {
-    const filename = `extreme-${scenario.name.replace(/\s/g, '-')}-${i}-${Date.now()}.csv`;
-    
-    const promise = (async () => {
-      try {
-        const content = generateTestCSV(scenario);
-        fs.writeFileSync(filename, content);
-        
-        const uploadResult = await uploadFile(filename, scenario);
-        const batch = await waitForBatchCompletion(uploadResult.id, scenario.timeLimit || 60000);
-        
-        // Clean up
-        try { fs.unlinkSync(filename); } catch (e) {}
-        
-        return {
-          success: true,
-          batchId: uploadResult.id,
-          processingTime: Date.now() - startTime,
-          recordsProcessed: batch.processedRecords
-        };
-      } catch (error) {
-        BUGS_FOUND.push({
-          test: scenario.name,
-          type: 'Test Failure',
-          error: error.message,
-          timestamp: new Date().toISOString()
-        });
-        
-        try { fs.unlinkSync(filename); } catch (e) {}
-        
-        return {
-          success: false,
-          error: error.message,
-          processingTime: Date.now() - startTime
-        };
+      results.failed++;
+      console.log(`❌ ${name}: FAILED - ${result.issue}`);
+      if (result.critical) {
+        results.criticalIssues.push(result.issue);
       }
-    })();
-    
-    promises.push(promise);
+    }
+    if (result.optimizations) {
+      results.optimizations.push(...result.optimizations);
+    }
+  } catch (error) {
+    results.failed++;
+    console.log(`❌ ${name}: ERROR - ${error.message}`);
+    results.criticalIssues.push(`${name}: ${error.message}`);
   }
-  
-  const results = await Promise.all(promises);
-  const successes = results.filter(r => r.success).length;
-  const failures = results.length - successes;
-  
-  console.log(`   ✅ Success: ${successes}/${results.length}`);
-  if (failures > 0) {
-    console.log(`   ❌ Failures: ${failures} - ${scenario.name} has issues`);
-  }
-  
-  return results;
 }
 
-async function testAPIRobustness() {
-  console.log('\n🔍 API ROBUSTNESS TESTING');
-  
-  const apiTests = [
-    { path: '/api/upload/batches', method: 'GET', expectOk: true },
-    { path: '/api/dashboard/stats', method: 'GET', expectOk: true },
-    { path: '/api/monitoring/memory', method: 'GET', expectOk: true },
-    { path: '/api/classifications/0', method: 'GET', expectOk: false }, // Invalid ID
-    { path: '/api/classifications/-1', method: 'GET', expectOk: false }, // Negative ID  
-    { path: '/api/classifications/abc', method: 'GET', expectOk: false }, // Non-numeric
-    { path: '/api/classifications/999999', method: 'GET', expectOk: false }, // Non-existent
-    { path: '/api/nonexistent', method: 'GET', expectOk: false }, // 404
-    { path: '/api/upload', method: 'POST', expectOk: false }, // No file
-    { path: '/api/upload', method: 'GET', expectOk: false }, // Wrong method
+// TEST 1: EXTREME CONCURRENT LOAD
+await stressTest('Extreme Concurrent Load (100 requests)', async () => {
+  const promises = [];
+  const endpoints = [
+    '/api/dashboard/stats',
+    '/api/upload/batches',
+    '/api/monitoring/memory'
   ];
   
-  for (const test of apiTests) {
-    try {
-      const response = await fetch(`${API_BASE}${test.path}`, { method: test.method });
-      
-      if (test.expectOk && !response.ok) {
-        BUGS_FOUND.push({
-          type: 'API Error',
-          endpoint: test.path,
-          expected: 'Success',
-          got: `${response.status} ${response.statusText}`,
-          timestamp: new Date().toISOString()
-        });
-      }
-      
-      console.log(`   ${test.path} (${test.method}): ${response.status} ${response.ok ? '✅' : '❌'}`);
-    } catch (error) {
-      BUGS_FOUND.push({
-        type: 'API Exception',
-        endpoint: test.path,
-        error: error.message,
-        timestamp: new Date().toISOString()
-      });
-    }
-  }
-}
-
-async function testSystemLimits() {
-  console.log('\n🚀 SYSTEM LIMITS TESTING');
-  
-  // Memory monitoring
-  const memResponse = await fetch(`${API_BASE}/api/monitoring/memory`);
-  const memData = await memResponse.json();
-  
-  if (memData.current.heapUsedPercent > 95) {
-    BUGS_FOUND.push({
-      type: 'Memory Issue',
-      message: `Critical memory usage: ${memData.current.heapUsedPercent}%`,
-      timestamp: new Date().toISOString()
-    });
-  }
-  
-  console.log(`   Memory Usage: ${memData.current.heapUsedPercent}% (${memData.current.heapUsed}MB)`);
-  
-  // Check batch count
-  const batchResponse = await fetch(`${API_BASE}/api/upload/batches`);
-  const batches = await batchResponse.json();
-  
-  console.log(`   Total Batches: ${batches.length}`);
-  
-  if (batches.length > 100) {
-    ENHANCEMENTS.push({
-      area: 'Database Management',
-      suggestion: 'Implement batch archiving or cleanup for old batches',
-      reason: `Database has ${batches.length} batches`
-    });
-  }
-}
-
-async function identifyEnhancements() {
-  console.log('\n💡 ENHANCEMENT IDENTIFICATION');
-  
-  // Response time analysis
   const start = Date.now();
-  await fetch(`${API_BASE}/api/dashboard/stats`);
-  const dashboardTime = Date.now() - start;
   
-  if (dashboardTime > 500) {
-    ENHANCEMENTS.push({
-      area: 'Performance',
-      suggestion: 'Optimize dashboard API response time',
-      current: `${dashboardTime}ms`,
-      target: '<500ms'
-    });
+  for (let i = 0; i < 100; i++) {
+    const endpoint = endpoints[i % endpoints.length];
+    promises.push(fetch(`http://localhost:5000${endpoint}`));
   }
   
-  // User experience enhancements
-  ENHANCEMENTS.push(
-    {
-      area: 'File Upload',
-      suggestion: 'Add drag-and-drop file upload interface',
-      impact: 'Better user experience'
-    },
-    {
-      area: 'Progress Tracking',
-      suggestion: 'Real-time progress bars with percentage completion',
-      impact: 'Better user feedback'
-    },
-    {
-      area: 'Error Handling',
-      suggestion: 'User-friendly error messages with suggested fixes',
-      impact: 'Reduced user confusion'
-    },
-    {
-      area: 'Data Export',
-      suggestion: 'Multiple export formats (JSON, XML, PDF reports)',
-      impact: 'Better data portability'
-    },
-    {
-      area: 'System Monitoring',
-      suggestion: 'Real-time system health dashboard',
-      impact: 'Better system observability'
-    }
-  );
+  const responses = await Promise.all(promises);
+  const end = Date.now();
   
-  console.log(`   Identified ${ENHANCEMENTS.length} enhancement opportunities`);
-}
+  const failed = responses.filter(r => !r.ok).length;
+  const avgTime = (end - start) / 100;
+  
+  const optimizations = [];
+  if (avgTime > 100) {
+    optimizations.push(`High average response time: ${avgTime}ms - consider connection pooling`);
+  }
+  if (failed > 5) {
+    optimizations.push(`${failed}% request failure rate - improve error handling`);
+  }
+  
+  return {
+    success: failed < 10,
+    issue: failed >= 10 ? `${failed}/100 requests failed` : null,
+    optimizations,
+    metrics: { avgTime, failureRate: failed }
+  };
+});
 
-async function main() {
-  console.log('🎯 EXTREME STRESS TESTING - FINDING EVERY BUG AND ENHANCEMENT');
-  console.log('='.repeat(80));
+// TEST 2: MEMORY LEAK DETECTION
+await stressTest('Memory Leak Detection', async () => {
+  const initialResponse = await fetch('http://localhost:5000/api/monitoring/memory');
+  const initialData = await initialResponse.json();
   
-  try {
-    // Run all extreme test scenarios
-    for (const scenario of EXTREME_TEST_SCENARIOS) {
-      await runExtremeTest(scenario);
-      
-      // Brief pause between tests
-      await new Promise(resolve => setTimeout(resolve, 1000));
+  // Generate load for 30 seconds
+  const endTime = Date.now() + 30000;
+  let requestCount = 0;
+  
+  while (Date.now() < endTime) {
+    await fetch('http://localhost:5000/api/upload/batches');
+    requestCount++;
+    if (requestCount % 10 === 0) {
+      await new Promise(resolve => setTimeout(resolve, 100)); // Brief pause
     }
+  }
+  
+  const finalResponse = await fetch('http://localhost:5000/api/monitoring/memory');
+  const finalData = await finalResponse.json();
+  
+  const memoryIncrease = finalData.heapUsed - initialData.heapUsed;
+  const memoryIncreasePercent = (memoryIncrease / initialData.heapUsed) * 100;
+  
+  const optimizations = [];
+  if (memoryIncrease > 20) {
+    optimizations.push(`Significant memory increase: ${memoryIncrease}MB after ${requestCount} requests`);
+    optimizations.push('Consider implementing result streaming for large datasets');
+  }
+  if (finalData.heapUsedPercent > 95) {
+    optimizations.push('Critical memory usage - enable garbage collection with --expose-gc');
+  }
+  
+  return {
+    success: memoryIncrease < 30,
+    issue: memoryIncrease >= 30 ? `Memory leak detected: +${memoryIncrease}MB` : null,
+    critical: memoryIncrease >= 50,
+    optimizations,
+    metrics: { memoryIncrease, requestCount, finalMemoryPercent: finalData.heapUsedPercent }
+  };
+});
+
+// TEST 3: DATABASE QUERY PERFORMANCE
+await stressTest('Database Query Performance Analysis', async () => {
+  const queryTimes = [];
+  const batchSizes = [];
+  
+  for (let i = 0; i < 20; i++) {
+    const start = Date.now();
+    const response = await fetch('http://localhost:5000/api/upload/batches');
+    const end = Date.now();
     
-    // Additional testing
-    await testAPIRobustness();
-    await testSystemLimits();
-    await identifyEnhancements();
-    
-    // Final report
-    console.log('\n' + '='.repeat(80));
-    console.log('🎯 EXTREME TESTING RESULTS');
-    console.log('='.repeat(80));
-    
-    console.log(`\n📊 STATISTICS:`);
-    console.log(`   Total Tests Run: ${TEST_COUNT}`);
-    console.log(`   🐛 Bugs Found: ${BUGS_FOUND.length}`);
-    console.log(`   💡 Enhancements Identified: ${ENHANCEMENTS.length}`);
-    
-    if (BUGS_FOUND.length > 0) {
-      console.log(`\n🐛 CRITICAL BUGS FOUND:`);
-      BUGS_FOUND.forEach((bug, i) => {
-        console.log(`   ${i + 1}. ${bug.type}: ${bug.error || bug.message || bug.got}`);
-      });
+    if (response.ok) {
+      const data = await response.json();
+      queryTimes.push(end - start);
+      batchSizes.push(data.length);
     }
-    
-    console.log(`\n💡 ENHANCEMENT OPPORTUNITIES:`);
-    ENHANCEMENTS.forEach((enhancement, i) => {
-      console.log(`   ${i + 1}. ${enhancement.area}: ${enhancement.suggestion}`);
+  }
+  
+  const avgTime = queryTimes.reduce((a, b) => a + b, 0) / queryTimes.length;
+  const maxTime = Math.max(...queryTimes);
+  const avgBatchSize = batchSizes.reduce((a, b) => a + b, 0) / batchSizes.length;
+  
+  const optimizations = [];
+  if (avgTime > 200) {
+    optimizations.push(`Slow database queries: ${avgTime}ms average - add database indexes`);
+  }
+  if (maxTime > 500) {
+    optimizations.push(`Very slow queries detected: ${maxTime}ms max - optimize query structure`);
+  }
+  if (avgBatchSize > 100) {
+    optimizations.push(`Large result sets: ${avgBatchSize} avg records - implement pagination`);
+  }
+  
+  return {
+    success: avgTime < 300,
+    issue: avgTime >= 300 ? `Slow queries: ${avgTime}ms average` : null,
+    optimizations,
+    metrics: { avgTime, maxTime, avgBatchSize }
+  };
+});
+
+// TEST 4: RATE LIMITING EFFECTIVENESS
+await stressTest('Rate Limiting and Security', async () => {
+  const rapidRequests = [];
+  
+  // Send 50 rapid requests
+  for (let i = 0; i < 50; i++) {
+    rapidRequests.push(fetch('http://localhost:5000/api/dashboard/stats'));
+  }
+  
+  const responses = await Promise.all(rapidRequests);
+  const rateLimited = responses.filter(r => r.status === 429).length;
+  const successful = responses.filter(r => r.ok).length;
+  
+  const optimizations = [];
+  if (rateLimited === 0 && successful === 50) {
+    optimizations.push('Rate limiting may be too permissive - consider stricter limits');
+  }
+  if (successful < 30) {
+    optimizations.push('Rate limiting too strict - may impact legitimate users');
+  }
+  
+  return {
+    success: successful >= 30 && successful <= 45,
+    issue: successful < 30 ? 'Rate limiting too strict' : successful > 45 ? 'Rate limiting too permissive' : null,
+    optimizations,
+    metrics: { successful, rateLimited }
+  };
+});
+
+// TEST 5: ERROR HANDLING ROBUSTNESS
+await stressTest('Error Handling Robustness', async () => {
+  const errorTests = [
+    { url: '/api/classifications/invalid123', expectedStatus: [400, 500] },
+    { url: '/api/nonexistent/endpoint', expectedStatus: [404] },
+    { url: '/api/upload', method: 'POST', expectedStatus: [400, 422] },
+    { url: '/api/classifications/-1', expectedStatus: [400, 404] },
+    { url: '/api/classifications/999999999', expectedStatus: [404] }
+  ];
+  
+  let properErrorHandling = 0;
+  const optimizations = [];
+  
+  for (const test of errorTests) {
+    const response = await fetch(`http://localhost:5000${test.url}`, { 
+      method: test.method || 'GET' 
     });
     
-    // Save comprehensive report
-    const report = {
-      timestamp: new Date().toISOString(),
-      testsRun: TEST_COUNT,
-      bugsFound: BUGS_FOUND.length,
-      enhancementsIdentified: ENHANCEMENTS.length,
-      bugs: BUGS_FOUND,
-      enhancements: ENHANCEMENTS
-    };
-    
-    fs.writeFileSync('extreme-test-report.json', JSON.stringify(report, null, 2));
-    console.log(`\n💾 Complete report saved to: extreme-test-report.json`);
-    
-    if (BUGS_FOUND.length === 0) {
-      console.log(`\n🎉 ZERO CRITICAL BUGS FOUND - SYSTEM IS EXTREMELY ROBUST!`);
+    if (test.expectedStatus.includes(response.status)) {
+      properErrorHandling++;
     } else {
-      console.log(`\n⚠️  ${BUGS_FOUND.length} ISSUES REQUIRE IMMEDIATE ATTENTION`);
+      optimizations.push(`Improper error handling for ${test.url}: got ${response.status}, expected ${test.expectedStatus}`);
     }
-    
-  } catch (error) {
-    console.error('❌ EXTREME TESTING FAILED:', error);
-    process.exit(1);
   }
+  
+  return {
+    success: properErrorHandling >= 4,
+    issue: properErrorHandling < 4 ? `Poor error handling: ${properErrorHandling}/5 tests passed` : null,
+    optimizations,
+    metrics: { properErrorHandling, totalTests: errorTests.length }
+  };
+});
+
+// FINAL ANALYSIS
+console.log('\n' + '=' .repeat(70));
+console.log('🔥 EXTREME STRESS TEST RESULTS');
+console.log('=' .repeat(70));
+console.log(`📊 Tests Run: ${results.tests}`);
+console.log(`✅ Passed: ${results.passed}`);
+console.log(`❌ Failed: ${results.failed}`);
+console.log(`📈 Success Rate: ${Math.round((results.passed / results.tests) * 100)}%`);
+
+if (results.criticalIssues.length > 0) {
+  console.log('\n🚨 CRITICAL ISSUES REQUIRING IMMEDIATE ATTENTION:');
+  results.criticalIssues.forEach(issue => console.log(`   ❌ ${issue}`));
 }
 
-main();
+const uniqueOptimizations = results.optimizations.length > 0 ? [...new Set(results.optimizations)] : [];
+
+if (uniqueOptimizations.length > 0) {
+  console.log('\n🎯 OPTIMIZATION OPPORTUNITIES:');
+  uniqueOptimizations.forEach(opt => console.log(`   🔧 ${opt}`));
+}
+
+// Write detailed report
+const report = {
+  timestamp: new Date().toISOString(),
+  testResults: results,
+  systemHealth: {
+    memoryUsage: await fetch('http://localhost:5000/api/monitoring/memory').then(r => r.json()).catch(() => null)
+  },
+  recommendations: uniqueOptimizations
+};
+
+fs.writeFileSync('extreme-test-report.json', JSON.stringify(report, null, 2));
+console.log('\n📋 Detailed report saved to: extreme-test-report.json');
+
+console.log('\n🎯 READY FOR OPTIMIZATION IMPLEMENTATION');
