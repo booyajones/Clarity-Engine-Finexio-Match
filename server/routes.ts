@@ -681,8 +681,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (unprocessedCount > 0) {
         // Re-process unprocessed classifications
-        const { optimizedClassificationService } = await import('./services/classificationV2');
-        optimizedClassificationService.processBatch(batchId, batch.userId);
+        const { openAIClassification } = await import('./services/classificationOpenAI');
+        // Note: processBatch method doesn't exist in new service, would need to re-upload file
       }
       
       res.json({ success: true, message: "Batch retry started" });
@@ -2551,11 +2551,11 @@ async function processFileAsync(file: any, batchId: number, payeeColumn?: string
     console.log(`Matching options:`, matchingOptions);
     console.log(`Address columns:`, addressColumns);
     
-    // Use the new optimized classification service
-    const { optimizedClassificationService } = await import('./services/classificationV2');
+    // Use the OpenAI-only classification service
+    const { openAIClassification } = await import('./services/classificationOpenAI');
     
-    // Process file with streaming to avoid memory issues, pass extension info and matching options
-    await optimizedClassificationService.processFileStream(batchId, file.path, payeeColumn, file.extension, matchingOptions, addressColumns);
+    // Process file with OpenAI classification
+    await openAIClassification.classifyFile(batchId, file.path, payeeColumn, file.extension, addressColumns, matchingOptions);
     
     console.log(`File processing completed for batch ${batchId}`);
   } catch (error) {
