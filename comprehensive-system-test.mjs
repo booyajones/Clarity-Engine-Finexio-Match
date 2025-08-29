@@ -86,7 +86,16 @@ async function getBatchResults(batchId) {
   if (!response.ok) {
     throw new Error(`Failed to get results for batch ${batchId}`);
   }
-  return await response.json();
+  const rawData = await response.json();
+  
+  // Transform API response to expected format
+  return {
+    success: true,
+    data: rawData.classifications || [],
+    count: rawData.classifications ? rawData.classifications.length : 0,
+    batch: rawData.batch,
+    summary: rawData.summary
+  };
 }
 
 async function checkSystemHealth() {
@@ -159,7 +168,7 @@ async function runSingleTest(testNumber) {
     // Step 4: Get results
     const results = await getBatchResults(uploadResult.id);
     if (!results.success || !results.data || results.data.length === 0) {
-      throw new Error('No classification results returned');
+      throw new Error(`No classification results returned - got ${results.count || 0} records`);
     }
     testResult.steps.push(`✓ Retrieved ${results.data.length} classification results`);
     
