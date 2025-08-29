@@ -5,6 +5,7 @@ import { setupVite, serveStatic, log } from "./vite";
 import { mastercardApi } from "./services/mastercardApi";
 import { getMastercardWorker } from "./services/mastercardWorker";
 import { batchWatchdog } from "./services/batchWatchdog";
+import memoryMonitor from "./utils/memoryMonitor";
 
 const app = express();
 // Security and optimization middleware
@@ -58,6 +59,10 @@ app.use((req, res, next) => {
     // Start batch watchdog to prevent stalled jobs
     batchWatchdog.start();
     console.log('🔍 Batch watchdog started to monitor stuck jobs');
+    
+    // Start memory monitoring
+    memoryMonitor.start();
+    console.log('📊 Memory monitoring started');
     
     // Aggressive memory management - GC every 15 seconds and clear caches
     setInterval(() => {
