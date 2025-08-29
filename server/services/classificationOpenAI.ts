@@ -105,9 +105,19 @@ class OpenAIClassificationService {
         allClassifications.push(...classifications);
       }
 
-      // Save all classifications
-      console.log(`Saving ${allClassifications.length} classifications`);
-      await storage.createPayeeClassifications(allClassifications);
+      // Save all classifications (only if we have some)
+      if (allClassifications.length > 0) {
+        console.log(`Saving ${allClassifications.length} classifications`);
+        await storage.createPayeeClassifications(allClassifications);
+      } else {
+        console.log(`No classifications to save for batch ${batchId}`);
+        await storage.updateUploadBatch(batchId, {
+          status: "failed",
+          classificationStatus: "failed",
+          errorMessage: "No payees found in file. Please check the payee column selection."
+        });
+        return;
+      }
 
       // Mark classification as complete
       await storage.updateUploadBatch(batchId, {
@@ -214,14 +224,30 @@ class OpenAIClassificationService {
   private detectNameColumn(row: Record<string, any>): string {
     if (!row) return Object.keys(row)[0];
     
-    const nameVariations = ['payee_name', 'payee', 'vendor', 'supplier', 'name', 'company'];
+    const nameVariations = [
+      'company name', 'company_name', 'companyname',
+      'payee_name', 'payee name', 'payeename', 'payee',
+      'vendor name', 'vendor_name', 'vendorname', 'vendor',
+      'supplier name', 'supplier_name', 'suppliername', 'supplier',
+      'business name', 'business_name', 'businessname', 'business',
+      'name', 'company'
+    ];
     const keys = Object.keys(row);
     
+    // Try exact match first (case-insensitive)
+    for (const variation of nameVariations) {
+      const found = keys.find(key => key.toLowerCase() === variation);
+      if (found) return found;
+    }
+    
+    // Then try partial match
     for (const variation of nameVariations) {
       const found = keys.find(key => key.toLowerCase().includes(variation));
       if (found) return found;
     }
     
+    // Default to first column
+    console.log(`Warning: Could not detect name column, using first column: ${keys[0]}`);
     return keys[0];
   }
 

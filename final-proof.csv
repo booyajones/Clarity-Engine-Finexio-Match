@@ -1,0 +1,30 @@
+Company Name
+FedEx Corporation
+Microsoft Azure
+HD Supply Inc
+Walmart Stores
+Amazon Web Services
+Google Cloud Platform
+Apple Inc
+Target Corporation
+Home Depot
+Best Buy Co
+UPS Store
+Costco Wholesale
+CVS Health
+Walgreens
+AT&T Inc
+Verizon Communications
+T-Mobile USA
+Comcast Corporation
+Netflix Inc
+Disney Corporation
+EOF && curl -X POST http://localhost:5000/api/upload \
+  -F "file=@final-proof.csv" \
+  -F "payeeColumn=Company Name" \
+  -F "enableFinexio=false" \
+  -F "enableMastercard=false" \
+  -F "enableGoogleAddressValidation=false" \
+  -F "enableAddressNormalization=false" \
+  -F "enableAkkio=false" \
+  --silent | jq '.'
