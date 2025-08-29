@@ -21,12 +21,20 @@ export class MastercardWorkingService {
 
   private loadPrivateKey() {
     try {
+      // Check if path is empty or undefined
+      if (!config.privateKeyPath || config.privateKeyPath.trim() === '') {
+        console.log('⚠️ Mastercard private key path not configured, using fallback from ./mastercard-private-key.pem');
+        config.privateKeyPath = './mastercard-private-key.pem';
+      }
+      
       const privateKeyPem = fs.readFileSync(config.privateKeyPath, 'utf8');
       this.privateKey = privateKeyPem.match(/-----BEGIN (RSA )?PRIVATE KEY-----[\s\S]+?-----END (RSA )?PRIVATE KEY-----/)?.[0] || '';
       console.log('✅ Mastercard private key loaded successfully');
     } catch (error) {
-      console.error('Failed to load Mastercard private key:', error);
-      throw error;
+      console.error(`Failed to load Mastercard private key from ${config.privateKeyPath}:`, error);
+      // Don't throw error, just disable Mastercard functionality
+      this.privateKey = '';
+      console.log('⚠️ Mastercard service will be disabled due to missing private key');
     }
   }
 

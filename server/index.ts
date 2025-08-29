@@ -64,6 +64,28 @@ app.use((req, res, next) => {
     memoryMonitor.start();
     console.log('📊 Memory monitoring started');
     
+    // Manual garbage collection for memory optimization - PRODUCTION CRITICAL
+    // Manual garbage collection for memory optimization - PRODUCTION CRITICAL
+    if (global.gc) {
+      setInterval(() => {
+        try {
+          const beforeGC = process.memoryUsage();
+          global.gc();
+          const afterGC = process.memoryUsage();
+          const freed = beforeGC.heapUsed - afterGC.heapUsed;
+          if (freed > 5 * 1024 * 1024) { // Only log if we freed > 5MB
+            console.log(`🧹 GC freed ${Math.round(freed / 1024 / 1024)}MB (heap: ${Math.round(afterGC.heapUsed / 1024 / 1024)}MB)`);
+          }
+        } catch (error) {
+          console.log('⚠️ GC error:', error.message);
+        }
+      }, 10000); // Every 10 seconds
+      console.log('🧠 Aggressive garbage collection enabled (10s interval)');
+    } else {
+      console.log('⚠️ Garbage collection not available - restart with --expose-gc');
+    }
+
+    
     // Aggressive memory management - GC every 15 seconds and clear caches
     setInterval(() => {
       if (global.gc) {

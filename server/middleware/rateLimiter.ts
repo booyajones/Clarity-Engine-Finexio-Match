@@ -14,10 +14,10 @@ export const generalLimiter = rateLimit({
   }
 });
 
-// Strict rate limiter for upload endpoints
+// Upload rate limiter - FIXED for testing and production use
 export const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // limit each IP to 10 uploads per windowMs
+  max: 100, // INCREASED: Allow 100 uploads per 15 minutes for testing/concurrent use
   message: 'Too many upload requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,

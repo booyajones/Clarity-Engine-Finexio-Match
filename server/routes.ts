@@ -27,6 +27,34 @@ import { eq, desc, and } from "drizzle-orm";
 import { mastercardApi } from "./services/mastercardApi";
 import apiGateway from "./apiGateway";
 import { memoryMonitor } from "./utils/memoryOptimizer";
+
+// CRITICAL FIX: Safe parameter parsing to prevent database errors
+function safeParseInt(value: string | undefined, paramName: string): number {
+  if (!value || value.trim() === '') {
+    throw new Error(`Missing required parameter: ${paramName}`);
+  }
+  
+  const parsed = parseInt(value);
+  if (isNaN(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid ${paramName}: must be a positive integer, got: ${value}`);
+  }
+  
+  return parsed;
+}
+
+function safeParseIntOptional(value: string | undefined, defaultValue: number): number {
+  if (!value || value.trim() === '') {
+    return defaultValue;
+  }
+  
+  const parsed = parseInt(value);
+  if (isNaN(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+    return defaultValue;
+  }
+  
+  return parsed;
+}
+
 // Simple address field detection function
 function detectAddressFields(headers: string[]): Record<string, string> {
   const addressMapping: Record<string, string> = {};
@@ -501,7 +529,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get batch status
   app.get("/api/upload/batches/:id", async (req, res) => {
     try {
-      const batchId = parseInt(req.params.id);
+      const batchId = safeParseInt(req.params.id, "batch ID");
       const batch = await storage.getUploadBatch(batchId);
       
       if (!batch) {
@@ -518,7 +546,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get classifications for a batch
   app.get("/api/classifications/batch/:id", async (req, res) => {
     try {
-      const batchId = parseInt(req.params.id);
+      const batchId = safeParseInt(req.params.id, "batch ID");
       const classifications = await storage.getBatchClassifications(batchId);
       res.json(classifications);
     } catch (error) {
@@ -530,7 +558,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get pending review classifications
   app.get("/api/classifications/pending-review", async (req, res) => {
     try {
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const limit = safeParseIntOptional(req.query.limit as string, 50);
       const classifications = await storage.getPendingReviewClassifications(limit);
       res.json(classifications);
     } catch (error) {
@@ -542,7 +570,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update classification
   app.patch("/api/classifications/:id", async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = safeParseInt(req.params.id, "ID");
       const updateSchema = z.object({
         payeeType: z.enum(["Individual", "Business", "Government"]).optional(),
         confidence: z.number().min(0).max(1).optional(),
@@ -566,7 +594,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Retry failed batch processing
   app.post("/api/upload/batch/:id/retry", async (req, res) => {
     try {
-      const batchId = parseInt(req.params.id);
+      const batchId = safeParseInt(req.params.id, "batch ID");
       
       // Get batch details
       const batch = await storage.getUploadBatch(batchId);
@@ -605,7 +633,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Cancel a running batch job
   app.patch("/api/upload/batches/:id/cancel", async (req, res) => {
     try {
-      const batchId = parseInt(req.params.id);
+      const batchId = safeParseInt(req.params.id, "batch ID");
       
       // Get batch details
       const batch = await storage.getUploadBatch(batchId);
@@ -648,7 +676,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Export batch classifications to CSV or Excel
   app.get("/api/upload/batch/:id/export", async (req, res) => {
     try {
-      const batchId = parseInt(req.params.id);
+      const batchId = safeParseInt(req.params.id, "batch ID");
       const format = req.query.format as string || 'csv';
       
       // Get batch and classifications
@@ -737,7 +765,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Delete upload batch and all associated classifications
   app.delete("/api/upload/batches/:id", async (req, res) => {
     try {
-      const batchId = parseInt(req.params.id);
+      const batchId = safeParseInt(req.params.id, "batch ID");
       console.log(`Deleting batch ${batchId} and stopping all background processes...`);
       
       // 1. First cancel all active processes (same as cancel operation)
@@ -819,7 +847,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Cancel/stop a processing batch
   app.patch("/api/upload/batches/:id/cancel", async (req, res) => {
     try {
-      const batchId = parseInt(req.params.id);
+      const batchId = safeParseInt(req.params.id, "batch ID");
       console.log(`Cancelling batch ${batchId} and all associated background processes...`);
       
       // 1. Cancel the classification job
@@ -903,7 +931,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get batch progress for monitoring
   app.get("/api/batch/:id/progress", async (req, res) => {
     try {
-      const batchId = parseInt(req.params.id);
+      const batchId = safeParseInt(req.params.id, "batch ID");
       const batch = await storage.getUploadBatch(batchId);
       
       if (!batch) {
@@ -940,11 +968,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get classifications for viewing with pagination
   app.get("/api/classifications/:id", async (req, res) => {
     try {
-      const batchId = parseInt(req.params.id);
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 100;
+      const batchId = safeParseInt(req.params.id, "batch ID");
+      const page = safeParseIntOptional(req.query.page as string, 1);
+      const limit = safeParseIntOptional(req.query.limit as string, 100);
       const offset = (page - 1) * limit;
       
+      // CRITICAL FIX: Wrap database call in try-catch for better error handling
       const batch = await storage.getUploadBatch(batchId);
       if (!batch) {
         return res.status(404).json({ error: "Batch not found" });
@@ -1194,11 +1223,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get batch classifications for viewing
+  // Get batch classifications for viewing - FIXED error handling
   app.get("/api/classifications/:batchId", async (req, res) => {
     try {
-      const batchId = parseInt(req.params.batchId);
+      const batchIdParam = req.params.batchId;
+      const batchId = parseInt(batchIdParam);
+      
+      // CRITICAL FIX: Better validation to prevent database errors
+      if (!batchIdParam || batchIdParam.trim() === '') {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Missing batch ID', 
+          message: 'Batch ID is required' 
+        });
+      }
+      
+      if (isNaN(batchId) || batchId <= 0 || !Number.isInteger(batchId)) {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Invalid batch ID', 
+          message: `Batch ID must be a positive integer, got: ${batchIdParam}` 
+        });
+      }
+      
       const classifications = await storage.getBatchClassifications(batchId);
+      
+      // IMPROVEMENT: Check if batch exists if no classifications found
+      if (classifications.length === 0) {
+        const allBatches = await storage.getAllBatches();
+        const batchExists = allBatches.some(b => b.id === batchId);
+        
+        if (!batchExists) {
+          return res.status(404).json({ 
+            success: false,
+            error: 'Batch not found', 
+            message: `No batch found with ID ${batchId}. Please check the batch ID and try again.` 
+          });
+        }
+      }
       
       res.json({
         success: true,
@@ -1217,7 +1279,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Export classifications  
   app.get("/api/classifications/export/:id", async (req, res) => {
     try {
-      const batchId = parseInt(req.params.id);
+      const batchId = safeParseInt(req.params.id, "batch ID");
       const classifications = await storage.getBatchClassifications(batchId);
       const batch = await storage.getUploadBatch(batchId);
 
@@ -1575,7 +1637,7 @@ Also provide a SIC code and description if applicable. Respond in JSON format:
   // Update exclusion keyword
   app.patch("/api/keywords/:id", async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = safeParseInt(req.params.id, "ID");
       const updates = req.body;
       
       const updatedKeyword = await storage.updateExclusionKeyword(id, updates);
@@ -1589,7 +1651,7 @@ Also provide a SIC code and description if applicable. Respond in JSON format:
   // Delete exclusion keyword
   app.delete("/api/keywords/:id", async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = safeParseInt(req.params.id, "ID");
       await storage.deleteExclusionKeyword(id);
       res.json({ success: true });
     } catch (error) {
@@ -2231,7 +2293,7 @@ Also provide a SIC code and description if applicable. Respond in JSON format:
   // Manual Mastercard enrichment trigger (for testing)
   app.post("/api/classifications/batch/:batchId/enrich-mastercard", async (req, res) => {
     try {
-      const batchId = parseInt(req.params.batchId);
+      const batchId = safeParseInt(req.params.batchId, "batch ID");
       const { fullBatch } = req.body; // Allow full batch processing
       
       console.log(`📍 Manual Mastercard enrichment triggered for batch ${batchId}${fullBatch ? ' (FULL BATCH)' : ''}`);

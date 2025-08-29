@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-08-29T01:33:02.921Z",
+  "timestamp": "2025-08-29T01:38:20.048Z",
   "summary": {
     "totalTests": 10,
     "passed": 10,
@@ -9,433 +9,433 @@
   "results": [
     {
       "testNumber": 1,
-      "startTime": "2025-08-29T01:31:45.144Z",
+      "startTime": "2025-08-29T01:37:06.575Z",
       "success": true,
       "steps": [
-        "✓ Created test file: test-1-1756431105144.csv (small)",
-        "✓ Uploaded file successfully: Batch ID 199",
+        "✓ Created test file: test-1-1756431426575.csv (small)",
+        "✓ Uploaded file successfully: Batch ID 209",
         "✓ Batch completed: 5 records processed",
         "✓ Retrieved 5 classification results",
         "✓ Results breakdown: 2 Business, 1 Individual, 1 Government",
         "✓ System health check completed",
-        "✓ Cleaned up test file: test-1-1756431105144.csv"
+        "✓ Cleaned up test file: test-1-1756431426575.csv"
       ],
       "errors": [],
-      "batchId": 199,
-      "processingTime": 4497,
-      "recordsProcessed": 5,
-      "memoryUsage": {
-        "heapUsed": 136,
-        "heapTotal": 145,
-        "current": {
-          "timestamp": "2025-08-29T01:31:50.043Z",
-          "heapUsed": 136,
-          "heapTotal": 145,
-          "rss": 311,
-          "external": 16,
-          "arrayBuffers": 5,
-          "heapUsedPercent": 93.95
-        },
-        "averageUsage5Min": 93.95,
-        "possibleMemoryLeak": false,
-        "system": {
-          "totalMemory": 64313,
-          "freeMemory": 36421,
-          "cpuUsage": {
-            "user": 10676844,
-            "system": 1001310
-          },
-          "uptime": 71.192899284
-        }
-      },
-      "endTime": "2025-08-29T01:31:50.048Z"
-    },
-    {
-      "testNumber": 2,
-      "startTime": "2025-08-29T01:31:53.052Z",
-      "success": true,
-      "steps": [
-        "✓ Created test file: test-2-1756431113052.csv (small)",
-        "✓ Uploaded file successfully: Batch ID 200",
-        "✓ Batch completed: 5 records processed",
-        "✓ Retrieved 5 classification results",
-        "✓ Results breakdown: 2 Business, 1 Individual, 1 Government",
-        "✓ System health check completed",
-        "✓ Cleaned up test file: test-2-1756431113052.csv"
-      ],
-      "errors": [],
-      "batchId": 200,
-      "processingTime": 4997,
+      "batchId": 209,
+      "processingTime": 4431,
       "recordsProcessed": 5,
       "memoryUsage": {
         "heapUsed": 137,
-        "heapTotal": 154,
+        "heapTotal": 151,
         "current": {
-          "timestamp": "2025-08-29T01:31:58.456Z",
+          "timestamp": "2025-08-29T01:36:53.173Z",
           "heapUsed": 137,
-          "heapTotal": 154,
-          "rss": 319,
-          "external": 16,
+          "heapTotal": 151,
+          "rss": 312,
+          "external": 15,
           "arrayBuffers": 5,
-          "heapUsedPercent": 89.08
+          "heapUsedPercent": 90.74
         },
-        "averageUsage5Min": 89.08,
+        "averageUsage5Min": 92.16,
         "possibleMemoryLeak": false,
         "system": {
           "totalMemory": 64313,
-          "freeMemory": 36203,
+          "freeMemory": 35649,
           "cpuUsage": {
-            "user": 11031815,
-            "system": 1033174
+            "user": 13274621,
+            "system": 1187842
           },
-          "uptime": 79.606263047
+          "uptime": 170.969635977
         }
       },
-      "endTime": "2025-08-29T01:31:58.463Z"
+      "endTime": "2025-08-29T01:37:11.423Z"
+    },
+    {
+      "testNumber": 2,
+      "startTime": "2025-08-29T01:37:14.426Z",
+      "success": true,
+      "steps": [
+        "✓ Created test file: test-2-1756431434426.csv (small)",
+        "✓ Uploaded file successfully: Batch ID 210",
+        "✓ Batch completed: 5 records processed",
+        "✓ Retrieved 5 classification results",
+        "✓ Results breakdown: 2 Business, 1 Individual, 1 Government",
+        "✓ System health check completed",
+        "✓ Cleaned up test file: test-2-1756431434426.csv"
+      ],
+      "errors": [],
+      "batchId": 210,
+      "processingTime": 2352,
+      "recordsProcessed": 5,
+      "memoryUsage": {
+        "heapUsed": 137,
+        "heapTotal": 151,
+        "current": {
+          "timestamp": "2025-08-29T01:36:53.173Z",
+          "heapUsed": 137,
+          "heapTotal": 151,
+          "rss": 312,
+          "external": 15,
+          "arrayBuffers": 5,
+          "heapUsedPercent": 90.74
+        },
+        "averageUsage5Min": 92.16,
+        "possibleMemoryLeak": false,
+        "system": {
+          "totalMemory": 64313,
+          "freeMemory": 35505,
+          "cpuUsage": {
+            "user": 13444845,
+            "system": 1206127
+          },
+          "uptime": 177.319416565
+        }
+      },
+      "endTime": "2025-08-29T01:37:17.772Z"
     },
     {
       "testNumber": 3,
-      "startTime": "2025-08-29T01:32:01.467Z",
+      "startTime": "2025-08-29T01:37:20.775Z",
       "success": true,
       "steps": [
-        "✓ Created test file: test-3-1756431121467.csv (small)",
-        "✓ Uploaded file successfully: Batch ID 201",
+        "✓ Created test file: test-3-1756431440775.csv (small)",
+        "✓ Uploaded file successfully: Batch ID 211",
         "✓ Batch completed: 5 records processed",
         "✓ Retrieved 5 classification results",
         "✓ Results breakdown: 2 Business, 1 Individual, 1 Government",
         "✓ System health check completed",
-        "✓ Cleaned up test file: test-3-1756431121467.csv"
+        "✓ Cleaned up test file: test-3-1756431440775.csv"
       ],
       "errors": [],
-      "batchId": 201,
-      "processingTime": 2446,
+      "batchId": 211,
+      "processingTime": 2364,
       "recordsProcessed": 5,
       "memoryUsage": {
-        "heapUsed": 136,
-        "heapTotal": 154,
+        "heapUsed": 130,
+        "heapTotal": 170,
         "current": {
-          "timestamp": "2025-08-29T01:32:04.383Z",
-          "heapUsed": 136,
-          "heapTotal": 154,
-          "rss": 321,
+          "timestamp": "2025-08-29T01:37:23.174Z",
+          "heapUsed": 130,
+          "heapTotal": 170,
+          "rss": 351,
           "external": 16,
           "arrayBuffers": 5,
-          "heapUsedPercent": 88.12
+          "heapUsedPercent": 76.83
         },
-        "averageUsage5Min": 88.12,
+        "averageUsage5Min": 89.97,
         "possibleMemoryLeak": false,
         "system": {
           "totalMemory": 64313,
-          "freeMemory": 35822,
+          "freeMemory": 35307,
           "cpuUsage": {
-            "user": 11222949,
-            "system": 1048037
+            "user": 13750403,
+            "system": 1225432
           },
-          "uptime": 85.533072076
+          "uptime": 183.285241726
         }
       },
-      "endTime": "2025-08-29T01:32:04.392Z"
+      "endTime": "2025-08-29T01:37:23.735Z"
     },
     {
       "testNumber": 4,
-      "startTime": "2025-08-29T01:32:07.393Z",
+      "startTime": "2025-08-29T01:37:26.737Z",
       "success": true,
       "steps": [
-        "✓ Created test file: test-4-1756431127393.csv (small)",
-        "✓ Uploaded file successfully: Batch ID 202",
+        "✓ Created test file: test-4-1756431446737.csv (small)",
+        "✓ Uploaded file successfully: Batch ID 212",
         "✓ Batch completed: 5 records processed",
         "✓ Retrieved 5 classification results",
         "✓ Results breakdown: 2 Business, 1 Individual, 1 Government",
         "✓ System health check completed",
-        "✓ Cleaned up test file: test-4-1756431127393.csv"
+        "✓ Cleaned up test file: test-4-1756431446737.csv"
       ],
       "errors": [],
-      "batchId": 202,
-      "processingTime": 4635,
+      "batchId": 212,
+      "processingTime": 4406,
       "recordsProcessed": 5,
       "memoryUsage": {
-        "heapUsed": 140,
-        "heapTotal": 154,
+        "heapUsed": 130,
+        "heapTotal": 170,
         "current": {
-          "timestamp": "2025-08-29T01:32:12.424Z",
-          "heapUsed": 140,
-          "heapTotal": 154,
-          "rss": 321,
+          "timestamp": "2025-08-29T01:37:23.174Z",
+          "heapUsed": 130,
+          "heapTotal": 170,
+          "rss": 351,
           "external": 16,
           "arrayBuffers": 5,
-          "heapUsedPercent": 90.63
+          "heapUsedPercent": 76.83
         },
-        "averageUsage5Min": 90.63,
+        "averageUsage5Min": 89.97,
         "possibleMemoryLeak": false,
         "system": {
           "totalMemory": 64313,
-          "freeMemory": 35752,
+          "freeMemory": 35096,
           "cpuUsage": {
-            "user": 11351343,
-            "system": 1069961
+            "user": 13963702,
+            "system": 1254067
           },
-          "uptime": 93.574440013
+          "uptime": 191.09976592
         }
       },
-      "endTime": "2025-08-29T01:32:12.433Z"
+      "endTime": "2025-08-29T01:37:31.548Z"
     },
     {
       "testNumber": 5,
-      "startTime": "2025-08-29T01:32:15.434Z",
+      "startTime": "2025-08-29T01:37:34.550Z",
       "success": true,
       "steps": [
-        "✓ Created test file: test-5-1756431135434.csv (small)",
-        "✓ Uploaded file successfully: Batch ID 203",
+        "✓ Created test file: test-5-1756431454550.csv (small)",
+        "✓ Uploaded file successfully: Batch ID 213",
         "✓ Batch completed: 5 records processed",
         "✓ Retrieved 5 classification results",
         "✓ Results breakdown: 2 Business, 1 Individual, 1 Government",
         "✓ System health check completed",
-        "✓ Cleaned up test file: test-5-1756431135434.csv"
+        "✓ Cleaned up test file: test-5-1756431454550.csv"
       ],
       "errors": [],
-      "batchId": 203,
-      "processingTime": 4630,
+      "batchId": 213,
+      "processingTime": 2362,
       "recordsProcessed": 5,
       "memoryUsage": {
-        "heapUsed": 139,
-        "heapTotal": 154,
+        "heapUsed": 130,
+        "heapTotal": 170,
         "current": {
-          "timestamp": "2025-08-29T01:32:20.463Z",
-          "heapUsed": 139,
-          "heapTotal": 154,
-          "rss": 322,
+          "timestamp": "2025-08-29T01:37:23.174Z",
+          "heapUsed": 130,
+          "heapTotal": 170,
+          "rss": 351,
           "external": 16,
           "arrayBuffers": 5,
-          "heapUsedPercent": 89.99
+          "heapUsedPercent": 76.83
         },
-        "averageUsage5Min": 89.99,
+        "averageUsage5Min": 89.97,
         "possibleMemoryLeak": false,
         "system": {
           "totalMemory": 64313,
-          "freeMemory": 36091,
+          "freeMemory": 35214,
           "cpuUsage": {
-            "user": 11495503,
-            "system": 1086017
+            "user": 14110635,
+            "system": 1271477
           },
-          "uptime": 101.612629431
+          "uptime": 196.874306783
         }
       },
-      "endTime": "2025-08-29T01:32:20.468Z"
+      "endTime": "2025-08-29T01:37:37.326Z"
     },
     {
       "testNumber": 6,
-      "startTime": "2025-08-29T01:32:23.470Z",
+      "startTime": "2025-08-29T01:37:40.329Z",
       "success": true,
       "steps": [
-        "✓ Created test file: test-6-1756431143470.csv (large)",
-        "✓ Uploaded file successfully: Batch ID 204",
+        "✓ Created test file: test-6-1756431460329.csv (large)",
+        "✓ Uploaded file successfully: Batch ID 214",
         "✓ Batch completed: 50 records processed",
         "✓ Retrieved 50 classification results",
         "✓ Results breakdown: 50 Business, 0 Individual, 0 Government",
         "✓ System health check completed",
-        "✓ Cleaned up test file: test-6-1756431143470.csv"
+        "✓ Cleaned up test file: test-6-1756431460329.csv"
       ],
       "errors": [],
-      "batchId": 204,
-      "processingTime": 15762,
+      "batchId": 214,
+      "processingTime": 15348,
       "recordsProcessed": 50,
       "memoryUsage": {
-        "heapUsed": 142,
-        "heapTotal": 172,
+        "heapUsed": 138,
+        "heapTotal": 175,
         "current": {
-          "timestamp": "2025-08-29T01:32:39.765Z",
-          "heapUsed": 142,
-          "heapTotal": 172,
-          "rss": 338,
+          "timestamp": "2025-08-29T01:37:53.174Z",
+          "heapUsed": 138,
+          "heapTotal": 175,
+          "rss": 358,
           "external": 17,
           "arrayBuffers": 6,
-          "heapUsedPercent": 82.48
+          "heapUsedPercent": 78.78
         },
-        "averageUsage5Min": 82.48,
+        "averageUsage5Min": 88.57,
         "possibleMemoryLeak": false,
         "system": {
           "totalMemory": 64313,
-          "freeMemory": 35781,
+          "freeMemory": 34703,
           "cpuUsage": {
-            "user": 12339572,
-            "system": 1159847
+            "user": 14923332,
+            "system": 1334463
           },
-          "uptime": 120.9147714
+          "uptime": 215.704266205
         }
       },
-      "endTime": "2025-08-29T01:32:39.770Z"
+      "endTime": "2025-08-29T01:37:56.203Z"
     },
     {
       "testNumber": 7,
-      "startTime": "2025-08-29T01:32:42.772Z",
+      "startTime": "2025-08-29T01:37:59.204Z",
       "success": true,
       "steps": [
-        "✓ Created test file: test-7-1756431162772.csv (large)",
-        "✓ Uploaded file successfully: Batch ID 205",
+        "✓ Created test file: test-7-1756431479204.csv (large)",
+        "✓ Uploaded file successfully: Batch ID 215",
         "✓ Batch completed: 50 records processed",
         "✓ Retrieved 50 classification results",
         "✓ Results breakdown: 50 Business, 0 Individual, 0 Government",
         "✓ System health check completed",
-        "✓ Cleaned up test file: test-7-1756431162772.csv"
+        "✓ Cleaned up test file: test-7-1756431479204.csv"
       ],
       "errors": [],
-      "batchId": 205,
-      "processingTime": 2360,
+      "batchId": 215,
+      "processingTime": 2441,
       "recordsProcessed": 50,
       "memoryUsage": {
-        "heapUsed": 142,
-        "heapTotal": 173,
+        "heapUsed": 138,
+        "heapTotal": 175,
         "current": {
-          "timestamp": "2025-08-29T01:32:45.537Z",
-          "heapUsed": 142,
-          "heapTotal": 173,
-          "rss": 341,
+          "timestamp": "2025-08-29T01:37:53.174Z",
+          "heapUsed": 138,
+          "heapTotal": 175,
+          "rss": 358,
           "external": 17,
           "arrayBuffers": 6,
-          "heapUsedPercent": 81.78
+          "heapUsedPercent": 78.78
         },
-        "averageUsage5Min": 81.78,
+        "averageUsage5Min": 88.57,
         "possibleMemoryLeak": false,
         "system": {
           "totalMemory": 64313,
-          "freeMemory": 35560,
+          "freeMemory": 34466,
           "cpuUsage": {
-            "user": 12558811,
-            "system": 1181710
+            "user": 15224531,
+            "system": 1363884
           },
-          "uptime": 126.68673328
+          "uptime": 222.103103389
         }
       },
-      "endTime": "2025-08-29T01:32:45.541Z"
+      "endTime": "2025-08-29T01:38:02.552Z"
     },
     {
       "testNumber": 8,
-      "startTime": "2025-08-29T01:32:48.542Z",
+      "startTime": "2025-08-29T01:38:05.554Z",
       "success": true,
       "steps": [
-        "✓ Created test file: test-8-1756431168542.csv (large)",
-        "✓ Uploaded file successfully: Batch ID 206",
+        "✓ Created test file: test-8-1756431485554.csv (large)",
+        "✓ Uploaded file successfully: Batch ID 216",
         "✓ Batch completed: 50 records processed",
         "✓ Retrieved 50 classification results",
         "✓ Results breakdown: 50 Business, 0 Individual, 0 Government",
         "✓ System health check completed",
-        "✓ Cleaned up test file: test-8-1756431168542.csv"
+        "✓ Cleaned up test file: test-8-1756431485554.csv"
       ],
       "errors": [],
-      "batchId": 206,
-      "processingTime": 2386,
+      "batchId": 216,
+      "processingTime": 2426,
       "recordsProcessed": 50,
       "memoryUsage": {
-        "heapUsed": 141,
+        "heapUsed": 138,
         "heapTotal": 175,
         "current": {
-          "timestamp": "2025-08-29T01:32:51.350Z",
-          "heapUsed": 141,
+          "timestamp": "2025-08-29T01:37:53.174Z",
+          "heapUsed": 138,
           "heapTotal": 175,
-          "rss": 342,
+          "rss": 358,
           "external": 17,
           "arrayBuffers": 6,
-          "heapUsedPercent": 80.41
+          "heapUsedPercent": 78.78
         },
-        "averageUsage5Min": 80.41,
+        "averageUsage5Min": 88.57,
         "possibleMemoryLeak": false,
         "system": {
           "totalMemory": 64313,
-          "freeMemory": 35360,
+          "freeMemory": 34419,
           "cpuUsage": {
-            "user": 12794348,
-            "system": 1198342
+            "user": 15398836,
+            "system": 1377902
           },
-          "uptime": 132.500585865
+          "uptime": 227.958435554
         }
       },
-      "endTime": "2025-08-29T01:32:51.358Z"
+      "endTime": "2025-08-29T01:38:08.412Z"
     },
     {
       "testNumber": 9,
-      "startTime": "2025-08-29T01:32:54.360Z",
+      "startTime": "2025-08-29T01:38:11.413Z",
       "success": true,
       "steps": [
-        "✓ Created test file: test-9-1756431174360.csv (large)",
-        "✓ Uploaded file successfully: Batch ID 207",
+        "✓ Created test file: test-9-1756431491413.csv (large)",
+        "✓ Uploaded file successfully: Batch ID 217",
         "✓ Batch completed: 50 records processed",
         "✓ Retrieved 50 classification results",
         "✓ Results breakdown: 50 Business, 0 Individual, 0 Government",
         "✓ System health check completed",
-        "✓ Cleaned up test file: test-9-1756431174360.csv"
+        "✓ Cleaned up test file: test-9-1756431491413.csv"
       ],
       "errors": [],
-      "batchId": 207,
-      "processingTime": 2297,
+      "batchId": 217,
+      "processingTime": 2344,
       "recordsProcessed": 50,
       "memoryUsage": {
-        "heapUsed": 152,
+        "heapUsed": 138,
         "heapTotal": 175,
         "current": {
-          "timestamp": "2025-08-29T01:32:57.062Z",
-          "heapUsed": 152,
+          "timestamp": "2025-08-29T01:37:53.174Z",
+          "heapUsed": 138,
           "heapTotal": 175,
-          "rss": 343,
-          "external": 18,
-          "arrayBuffers": 7,
-          "heapUsedPercent": 86.64
+          "rss": 358,
+          "external": 17,
+          "arrayBuffers": 6,
+          "heapUsedPercent": 78.78
         },
-        "averageUsage5Min": 86.64,
+        "averageUsage5Min": 88.57,
         "possibleMemoryLeak": false,
         "system": {
           "totalMemory": 64313,
-          "freeMemory": 35391,
+          "freeMemory": 34577,
           "cpuUsage": {
-            "user": 12951349,
-            "system": 1213520
+            "user": 15571241,
+            "system": 1386851
           },
-          "uptime": 138.212145562
+          "uptime": 233.731864358
         }
       },
-      "endTime": "2025-08-29T01:32:57.066Z"
+      "endTime": "2025-08-29T01:38:14.187Z"
     },
     {
       "testNumber": 10,
-      "startTime": "2025-08-29T01:33:00.067Z",
+      "startTime": "2025-08-29T01:38:17.188Z",
       "success": true,
       "steps": [
-        "✓ Created test file: test-10-1756431180067.csv (large)",
-        "✓ Uploaded file successfully: Batch ID 208",
+        "✓ Created test file: test-10-1756431497188.csv (large)",
+        "✓ Uploaded file successfully: Batch ID 218",
         "✓ Batch completed: 50 records processed",
         "✓ Retrieved 50 classification results",
         "✓ Results breakdown: 50 Business, 0 Individual, 0 Government",
         "✓ System health check completed",
-        "✓ Cleaned up test file: test-10-1756431180067.csv"
+        "✓ Cleaned up test file: test-10-1756431497188.csv"
       ],
       "errors": [],
-      "batchId": 208,
-      "processingTime": 2436,
+      "batchId": 218,
+      "processingTime": 2421,
       "recordsProcessed": 50,
       "memoryUsage": {
-        "heapUsed": 151,
-        "heapTotal": 177,
+        "heapUsed": 138,
+        "heapTotal": 175,
         "current": {
-          "timestamp": "2025-08-29T01:33:02.908Z",
-          "heapUsed": 151,
-          "heapTotal": 177,
-          "rss": 345,
-          "external": 18,
-          "arrayBuffers": 7,
-          "heapUsedPercent": 85.01
+          "timestamp": "2025-08-29T01:37:53.174Z",
+          "heapUsed": 138,
+          "heapTotal": 175,
+          "rss": 358,
+          "external": 17,
+          "arrayBuffers": 6,
+          "heapUsedPercent": 78.78
         },
-        "averageUsage5Min": 85.01,
+        "averageUsage5Min": 88.57,
         "possibleMemoryLeak": false,
         "system": {
           "totalMemory": 64313,
-          "freeMemory": 35408,
+          "freeMemory": 34797,
           "cpuUsage": {
-            "user": 13080723,
-            "system": 1231915
+            "user": 15722573,
+            "system": 1403554
           },
-          "uptime": 144.057615284
+          "uptime": 239.582358184
         }
       },
-      "endTime": "2025-08-29T01:33:02.913Z"
+      "endTime": "2025-08-29T01:38:20.036Z"
     }
   ]
 }
