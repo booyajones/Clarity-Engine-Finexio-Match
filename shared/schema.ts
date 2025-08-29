@@ -23,6 +23,8 @@ export const uploadBatches = pgTable("upload_batches", {
   progressMessage: text("progress_message"),
   accuracy: real("accuracy").default(0),
   userId: integer("user_id").notNull(),
+  // Classification tracking
+  classificationStatus: text("classification_status").default("pending"), // pending, in_progress, completed, failed, skipped
   // Finexio/BigQuery matching tracking
   finexioMatchingStatus: text("finexio_matching_status").default("pending"), // pending, in_progress, completed, failed, skipped
   finexioMatchingStartedAt: timestamp("finexio_matching_started_at"),

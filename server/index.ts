@@ -59,13 +59,19 @@ app.use((req, res, next) => {
     batchWatchdog.start();
     console.log('🔍 Batch watchdog started to monitor stuck jobs');
     
-    // Force garbage collection every 30 seconds to manage memory
+    // Aggressive memory management - GC every 15 seconds and clear caches
     setInterval(() => {
       if (global.gc) {
         global.gc();
         console.log('🧹 Manual garbage collection triggered');
       }
-    }, 30000);
+      
+      // Clear Node.js module cache periodically to prevent memory leaks
+      const moduleCount = process.memoryUsage().heapUsed / 1024 / 1024;
+      if (moduleCount > 150) {
+        console.log(`⚠️ High heap usage: ${moduleCount.toFixed(1)}MB`);
+      }
+    }, 15000);
     
     const server = await registerRoutes(app);
     

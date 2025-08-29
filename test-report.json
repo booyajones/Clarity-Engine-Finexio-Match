@@ -1,0 +1,189 @@
+{
+  "timestamp": "2025-08-29T00:28:47.518Z",
+  "summary": {
+    "totalTests": 10,
+    "passed": 0,
+    "failed": 10,
+    "successRate": 0
+  },
+  "results": [
+    {
+      "testNumber": 1,
+      "startTime": "2025-08-29T00:27:32.082Z",
+      "success": false,
+      "steps": [
+        "✓ Created test file: test-1-1756427252082.csv (small)",
+        "✓ Uploaded file successfully: Batch ID 180",
+        "✓ Batch completed: 5 records processed"
+      ],
+      "errors": [
+        "No classification results returned"
+      ],
+      "batchId": 180,
+      "processingTime": 4433,
+      "recordsProcessed": 5,
+      "memoryUsage": null,
+      "endTime": "2025-08-29T00:27:36.921Z"
+    },
+    {
+      "testNumber": 2,
+      "startTime": "2025-08-29T00:27:39.922Z",
+      "success": false,
+      "steps": [
+        "✓ Created test file: test-2-1756427259922.csv (small)",
+        "✓ Uploaded file successfully: Batch ID 181",
+        "✓ Batch completed: 5 records processed"
+      ],
+      "errors": [
+        "No classification results returned"
+      ],
+      "batchId": 181,
+      "processingTime": 4389,
+      "recordsProcessed": 5,
+      "memoryUsage": null,
+      "endTime": "2025-08-29T00:27:44.711Z"
+    },
+    {
+      "testNumber": 3,
+      "startTime": "2025-08-29T00:27:47.713Z",
+      "success": false,
+      "steps": [
+        "✓ Created test file: test-3-1756427267713.csv (small)",
+        "✓ Uploaded file successfully: Batch ID 182",
+        "✓ Batch completed: 5 records processed"
+      ],
+      "errors": [
+        "No classification results returned"
+      ],
+      "batchId": 182,
+      "processingTime": 4604,
+      "recordsProcessed": 5,
+      "memoryUsage": null,
+      "endTime": "2025-08-29T00:27:52.727Z"
+    },
+    {
+      "testNumber": 4,
+      "startTime": "2025-08-29T00:27:55.730Z",
+      "success": false,
+      "steps": [
+        "✓ Created test file: test-4-1756427275730.csv (small)",
+        "✓ Uploaded file successfully: Batch ID 183",
+        "✓ Batch completed: 5 records processed"
+      ],
+      "errors": [
+        "No classification results returned"
+      ],
+      "batchId": 183,
+      "processingTime": 4432,
+      "recordsProcessed": 5,
+      "memoryUsage": null,
+      "endTime": "2025-08-29T00:28:00.562Z"
+    },
+    {
+      "testNumber": 5,
+      "startTime": "2025-08-29T00:28:03.564Z",
+      "success": false,
+      "steps": [
+        "✓ Created test file: test-5-1756427283564.csv (small)",
+        "✓ Uploaded file successfully: Batch ID 184",
+        "✓ Batch completed: 5 records processed"
+      ],
+      "errors": [
+        "No classification results returned"
+      ],
+      "batchId": 184,
+      "processingTime": 4375,
+      "recordsProcessed": 5,
+      "memoryUsage": null,
+      "endTime": "2025-08-29T00:28:08.342Z"
+    },
+    {
+      "testNumber": 6,
+      "startTime": "2025-08-29T00:28:11.345Z",
+      "success": false,
+      "steps": [
+        "✓ Created test file: test-6-1756427291345.csv (large)",
+        "✓ Uploaded file successfully: Batch ID 185",
+        "✓ Batch completed: 50 records processed"
+      ],
+      "errors": [
+        "No classification results returned"
+      ],
+      "batchId": 185,
+      "processingTime": 15156,
+      "recordsProcessed": 50,
+      "memoryUsage": null,
+      "endTime": "2025-08-29T00:28:27.031Z"
+    },
+    {
+      "testNumber": 7,
+      "startTime": "2025-08-29T00:28:30.032Z",
+      "success": false,
+      "steps": [
+        "✓ Created test file: test-7-1756427310032.csv (large)",
+        "✓ Uploaded file successfully: Batch ID 186",
+        "✓ Batch completed: 50 records processed"
+      ],
+      "errors": [
+        "No classification results returned"
+      ],
+      "batchId": 186,
+      "processingTime": 2363,
+      "recordsProcessed": 50,
+      "memoryUsage": null,
+      "endTime": "2025-08-29T00:28:32.864Z"
+    },
+    {
+      "testNumber": 8,
+      "startTime": "2025-08-29T00:28:35.865Z",
+      "success": false,
+      "steps": [
+        "✓ Created test file: test-8-1756427315865.csv (large)",
+        "✓ Uploaded file successfully: Batch ID 187",
+        "✓ Batch completed: 50 records processed"
+      ],
+      "errors": [
+        "No classification results returned"
+      ],
+      "batchId": 187,
+      "processingTime": 2342,
+      "recordsProcessed": 50,
+      "memoryUsage": null,
+      "endTime": "2025-08-29T00:28:38.613Z"
+    },
+    {
+      "testNumber": 9,
+      "startTime": "2025-08-29T00:28:41.615Z",
+      "success": false,
+      "steps": [
+        "✓ Created test file: test-9-1756427321615.csv (large)",
+        "✓ Uploaded file successfully: Batch ID 188",
+        "✓ Batch completed: 50 records processed"
+      ],
+      "errors": [
+        "No classification results returned"
+      ],
+      "batchId": 188,
+      "processingTime": 2352,
+      "recordsProcessed": 50,
+      "memoryUsage": null,
+      "endTime": "2025-08-29T00:28:44.502Z"
+    },
+    {
+      "testNumber": 10,
+      "startTime": "2025-08-29T00:28:47.503Z",
+      "success": false,
+      "steps": [
+        "✓ Created test file: test-10-1756427327503.csv (large)"
+      ],
+      "errors": [
+        "Upload failed: Too Many Requests"
+      ],
+      "batchId": null,
+      "processingTime": 0,
+      "recordsProcessed": 0,
+      "memoryUsage": null,
+      "endTime": "2025-08-29T00:28:47.508Z"
+    }
+  ]
+}

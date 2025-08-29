@@ -93,20 +93,20 @@ export class BatchWatchdog {
     try {
       // Find batches stuck in processing/enriching state
       const stuckBatches = await db.execute(sql`
-        SELECT id, status, current_step, updated_at,
+        SELECT id, status, current_step, created_at,
                classification_status, finexio_matching_status,
                mastercard_enrichment_status, akkio_prediction_status
         FROM upload_batches
         WHERE 
           status IN ('processing', 'enriching', 'classifying')
-          AND updated_at < NOW() - INTERVAL '10 minutes'
+          AND created_at < NOW() - INTERVAL '10 minutes'
       `);
 
       for (const batch of stuckBatches.rows) {
         logger.warn({ 
           batchId: batch.id,
           status: batch.status,
-          lastUpdate: batch.updated_at
+          lastUpdate: batch.created_at
         }, 'Found stuck batch');
 
         // Check if all modules are complete or failed

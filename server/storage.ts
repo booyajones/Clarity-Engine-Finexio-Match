@@ -192,6 +192,7 @@ export class DatabaseStorage implements IStorage {
         accuracy: batch.accuracy,
         userId: batch.userId,
         // Map enrichment status fields to camelCase
+        classificationStatus: batch.classificationStatus,
         finexioMatchingStatus: batch.finexioMatchingStatus,
         finexioMatchingProgress: batch.finexioMatchingProgress || 0,
         finexioMatchPercentage: batch.finexioMatchPercentage || 0,
