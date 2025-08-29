@@ -1,0 +1,25 @@
+{
+  "issue": "Cache slower than direct DB queries",
+  "impact": "Performance degradation of 150% (2ms to 5ms)",
+  "recommendations": {
+    "dashboardStats": {
+      "type": "Map",
+      "ttl": 60000,
+      "reason": "Small dataset, frequent access"
+    },
+    "mastercardResults": {
+      "type": "LRU",
+      "maxSize": 100,
+      "ttl": 300000,
+      "reason": "Large dataset, less frequent access"
+    },
+    "supplierCache": {
+      "type": "Map",
+      "maxSize": 1000,
+      "ttl": 3600000,
+      "reason": "Reference data, rarely changes"
+    }
+  },
+  "expectedImprovement": "Reduce cache lookup to < 1ms",
+  "memoryBenefit": "Reduce memory usage by 30-40%"
+}

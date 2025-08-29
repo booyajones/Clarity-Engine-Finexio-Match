@@ -35,8 +35,8 @@ export function forceGarbageCollection() {
 // Memory monitoring with automatic cleanup
 export class MemoryMonitor {
   private interval: NodeJS.Timeout | null = null;
-  private criticalThreshold = 85; // Trigger cleanup at 85%
-  private warningThreshold = 75;  // Warning at 75%
+  private criticalThreshold = 70; // URGENT: Trigger cleanup at 70%
+  private warningThreshold = 60;  // URGENT: Warning at 60%
   
   start(intervalMs = 30000) {
     console.log('📊 Starting memory monitoring...');

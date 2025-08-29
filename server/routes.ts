@@ -293,6 +293,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   // Note: Health check is now handled by the health routes middleware above
+  
+  // CRITICAL: Cache clear endpoint for memory management
+  app.post("/api/admin/clear-caches", async (req, res) => {
+    try {
+      console.log("🧹 CLEARING ALL CACHES TO FREE MEMORY");
+      
+      // Clear Mastercard cache
+      if (global.mastercardResultsCache) {
+        global.mastercardResultsCache.clear();
+      }
+      
+      // Force garbage collection if available
+      if (global.gc) {
+        global.gc();
+        console.log("✅ Garbage collection executed");
+      }
+      
+      // Get memory status after clearing
+      const memUsage = process.memoryUsage();
+      const heapPercent = (memUsage.heapUsed / memUsage.heapTotal) * 100;
+      
+      res.json({
+        success: true,
+        message: "Caches cleared successfully",
+        memory: {
+          heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+          heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+          percentage: heapPercent.toFixed(2)
+        }
+      });
+    } catch (error) {
+      console.error("Error clearing caches:", error);
+      res.status(500).json({ error: "Failed to clear caches" });
+    }
+  });
 
   // API Gateway health check for microservices
   app.get("/api/gateway/health", asyncHandler(async (req, res) => {
@@ -518,12 +553,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get upload batches
+  // Get upload batches - WITH PAGINATION (CRITICAL MEMORY FIX)
   app.get("/api/upload/batches", async (req, res) => {
     try {
       const userId = 1; // TODO: Get from session/auth
-      const batches = await storage.getUserUploadBatches(userId);
-      res.json(batches);
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 50); // Max 50
+      const offset = (page - 1) * limit;
+      
+      const allBatches = await storage.getUserUploadBatches(userId);
+      const totalCount = allBatches.length;
+      
+      // CRITICAL: Only send limited batches to reduce memory
+      const paginatedBatches = allBatches.slice(offset, offset + limit);
+      
+      // Backward compatibility - return array by default
+      if (req.query.includePagination === 'true') {
+        res.json({
+          batches: paginatedBatches,
+          pagination: {
+            page,
+            limit,
+            totalCount,
+            totalPages: Math.ceil(totalCount / limit),
+            hasMore: offset + limit < totalCount
+          }
+        });
+      } else {
+        res.json(paginatedBatches);
+      }
     } catch (error) {
       console.error("Error fetching upload batches:", error);
       res.status(500).json({ error: "Internal server error" });
