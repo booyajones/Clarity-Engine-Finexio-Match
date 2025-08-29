@@ -96,19 +96,24 @@ export class OptimizedClassificationService {
     // Set initial statuses for disabled modules
     const statusUpdates: any = {};
     
-    if (!this.matchingOptions.enableFinexio) {
+    // FIX: Default to TRUE for Finexio unless explicitly disabled
+    if (this.matchingOptions.enableFinexio === false) {
       statusUpdates.finexioMatchingStatus = "skipped";
     }
     
-    if (!this.matchingOptions.enableGoogleAddressValidation) {
+    if (this.matchingOptions.enableGoogleAddressValidation === true) {
+      // Only enable if explicitly requested
+    } else {
       statusUpdates.googleAddressStatus = "skipped";
     }
     
-    if (!this.matchingOptions.enableMastercard) {
+    if (this.matchingOptions.enableMastercard === false) {
       statusUpdates.mastercardEnrichmentStatus = "skipped";
     }
     
-    if (!this.matchingOptions.enableAkkio) {
+    if (this.matchingOptions.enableAkkio === true) {
+      // Only enable if explicitly requested
+    } else {
       statusUpdates.akkioPredictionStatus = "skipped";
     }
     
@@ -1215,6 +1220,41 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
   private tryFastPathClassification(name: string): ClassificationResult | null {
     const cleanName = name.trim().toUpperCase();
     
+    // CRITICAL FIX: Add major companies that MUST be classified as Business
+    const knownBusinesses = [
+      { pattern: 'FEDEX', sic: '4513', desc: 'Air Courier Services' },
+      { pattern: 'FEDERAL EXPRESS', sic: '4513', desc: 'Air Courier Services' },
+      { pattern: 'MICROSOFT', sic: '7372', desc: 'Prepackaged Software' },
+      { pattern: 'HD SUPPLY', sic: '5039', desc: 'Construction Materials' },
+      { pattern: 'HOME DEPOT', sic: '5211', desc: 'Lumber and Building Materials' },
+      { pattern: 'WALMART', sic: '5331', desc: 'Variety Stores' },
+      { pattern: 'AMAZON', sic: '5961', desc: 'Catalog and Mail-Order Houses' },
+      { pattern: 'GOOGLE', sic: '7374', desc: 'Computer Processing and Data Preparation' },
+      { pattern: 'APPLE', sic: '3571', desc: 'Electronic Computers' },
+      { pattern: 'UPS', sic: '4215', desc: 'Courier Services' },
+      { pattern: 'UNITED PARCEL', sic: '4215', desc: 'Courier Services' },
+      { pattern: 'COSTCO', sic: '5411', desc: 'Grocery Stores' },
+      { pattern: 'TARGET', sic: '5331', desc: 'Variety Stores' },
+      { pattern: 'COMCAST', sic: '4841', desc: 'Cable and Other Pay Television Services' },
+      { pattern: 'AT&T', sic: '4813', desc: 'Telephone Communications' },
+      { pattern: 'VERIZON', sic: '4813', desc: 'Telephone Communications' },
+      { pattern: 'FACEBOOK', sic: '7374', desc: 'Computer Processing and Data Preparation' },
+      { pattern: 'META', sic: '7374', desc: 'Computer Processing and Data Preparation' }
+    ];
+    
+    // Check for known major businesses FIRST (highest priority)
+    for (const business of knownBusinesses) {
+      if (cleanName.includes(business.pattern) || cleanName === business.pattern) {
+        return {
+          payeeType: 'Business',
+          confidence: 0.98,
+          reasoning: `Known major corporation: ${business.pattern}`,
+          sicCode: business.sic,
+          sicDescription: business.desc
+        };
+      }
+    }
+    
     // Pattern 1: Government entities
     const govPatterns = [
       'IRS', 'DMV', 'DEPT', 'DEPARTMENT', 'STATE OF', 'CITY OF', 'COUNTY OF',
@@ -1373,9 +1413,9 @@ Example: [["JPMorgan Chase", "Chase Bank"], ["Bank of America", "BofA"]]`
   // Start Finexio matching process
   private async startFinexioMatching(batchId: number): Promise<void> {
     try {
-      // Check if Finexio matching is disabled
+      // Check if Finexio matching is EXPLICITLY disabled (default is enabled)
       if (this.matchingOptions?.enableFinexio === false) {
-        console.log(`Finexio matching disabled for batch ${batchId}`);
+        console.log(`Finexio matching explicitly disabled for batch ${batchId}`);
         await storage.updateUploadBatch(batchId, {
           finexioMatchingStatus: "skipped",
           finexioMatchingCompletedAt: new Date()
