@@ -154,9 +154,9 @@ export default function Home() {
 
 
   const { data: batches, isLoading, refetch: refetchBatches } = useQuery<UploadBatch[]>({
-    queryKey: ["/api/upload/batches"],
-    // Poll every 2 seconds for real-time updates
-    refetchInterval: 2000,
+    queryKey: ["/api/upload/batches?limit=20"],
+    // Poll every 5 seconds with pagination to reduce memory
+    refetchInterval: 5000,
   });
 
   // REMOVED: No auto-updates - causing memory churn
@@ -277,7 +277,7 @@ export default function Home() {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/upload/batches"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/upload/batches?limit=20"] });
     },
     onError: (error: Error) => {
       toast({
@@ -308,13 +308,13 @@ export default function Home() {
     },
     onMutate: async (batchId) => {
       // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ["/api/upload/batches"] });
+      await queryClient.cancelQueries({ queryKey: ["/api/upload/batches?limit=20"] });
       
       // Snapshot the previous value
-      const previousBatches = queryClient.getQueryData<UploadBatch[]>(["/api/upload/batches"]);
+      const previousBatches = queryClient.getQueryData<UploadBatch[]>(["/api/upload/batches?limit=20"]);
       
       // Optimistically update by removing the batch from the list
-      queryClient.setQueryData<UploadBatch[]>(["/api/upload/batches"], (old) => 
+      queryClient.setQueryData<UploadBatch[]>(["/api/upload/batches?limit=20"], (old) => 
         old ? old.filter(batch => batch.id !== batchId) : []
       );
       
@@ -328,12 +328,12 @@ export default function Home() {
         duration: 2000,
       });
       // Refetch in background to ensure consistency
-      queryClient.invalidateQueries({ queryKey: ["/api/upload/batches"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/upload/batches?limit=20"] });
     },
     onError: (error: Error, _batchId, context) => {
       // If the mutation fails, use the context returned from onMutate to roll back
       if (context?.previousBatches) {
-        queryClient.setQueryData(["/api/upload/batches"], context.previousBatches);
+        queryClient.setQueryData(["/api/upload/batches?limit=20"], context.previousBatches);
       }
       toast({
         title: "Error",
@@ -363,7 +363,7 @@ export default function Home() {
         description: `Deleted ${data.deletedCount || 'all'} batches from classification history.`,
       });
       setShowClearAllDialog(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/upload/batches"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/upload/batches?limit=20"] });
     },
     onError: (error: Error) => {
       toast({

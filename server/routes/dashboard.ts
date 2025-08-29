@@ -1,33 +1,61 @@
 import { Router } from 'express';
 import { pool } from '../db';
 import { storage } from '../storage';
-import { LRUCache } from 'lru-cache';
 import { memoryManager } from '../utils/memoryManager';
 
 const router = Router();
 
-// Dashboard stats cache with 2-minute TTL to reduce memory
-const statsCache = new LRUCache<string, any>({
-  max: 1, // Only cache 1 item to minimize memory
-  ttl: 120000, // 2 minutes (reduced from 5)
-  allowStale: false,
-  updateAgeOnGet: false,
-  dispose: (value, key) => {
-    console.log(`♻️ Evicting dashboard cache entry: ${key}`);
-  }
-});
+// OPTIMIZED: Use Map instead of LRU for better performance
+// Simple Map cache with TTL for dashboard stats
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+}
 
-// Register cache with memory manager
-memoryManager.registerCache(statsCache);
+const statsCache = new Map<string, CacheEntry>();
+const CACHE_TTL = 120000; // 2 minutes
+
+// Helper to check if cache entry is valid
+function getCachedData(key: string): any | null {
+  const entry = statsCache.get(key);
+  if (!entry) return null;
+  
+  const now = Date.now();
+  if (now - entry.timestamp > CACHE_TTL) {
+    statsCache.delete(key);
+    console.log(`♻️ Evicting expired cache entry: ${key}`);
+    return null;
+  }
+  
+  return entry.data;
+}
+
+// Helper to set cache data
+function setCacheData(key: string, data: any): void {
+  statsCache.set(key, {
+    data,
+    timestamp: Date.now()
+  });
+}
+
+// Clear old entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of statsCache.entries()) {
+    if (now - entry.timestamp > CACHE_TTL) {
+      statsCache.delete(key);
+    }
+  }
+}, 60000); // Clean every minute
 
 /**
- * Optimized dashboard stats endpoint
+ * Optimized dashboard stats endpoint - using Map cache for better performance
  */
 router.get('/stats', async (req, res) => {
   try {
-    // Check cache first
+    // Check cache first - OPTIMIZED with Map
     const cacheKey = 'dashboard-stats';
-    const cached = statsCache.get(cacheKey);
+    const cached = getCachedData(cacheKey);
     
     if (cached) {
       console.log('📊 Cache hit for dashboard stats');
@@ -69,8 +97,8 @@ router.get('/stats', async (req, res) => {
       }
     };
     
-    // Cache the result
-    statsCache.set(cacheKey, stats);
+    // Cache the result - OPTIMIZED with Map
+    setCacheData(cacheKey, stats);
     
     res.json(stats);
   } catch (error) {
