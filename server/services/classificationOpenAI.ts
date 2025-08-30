@@ -9,11 +9,13 @@ import pLimit from 'p-limit';
 
 // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY 
+  apiKey: process.env.OPENAI_API_KEY,
+  maxRetries: 5,
+  timeout: 20000 // 20 second timeout for faster retries
 });
 
-// Maximum concurrent OpenAI calls for massive throughput
-const classificationLimit = pLimit(30);
+// Maximum concurrent OpenAI calls for Tier 5 performance (30,000 RPM)
+const classificationLimit = pLimit(200); // Aggressive concurrency for Tier 5
 
 export interface ClassificationResult {
   payeeType: string;
@@ -62,9 +64,9 @@ class OpenAIClassificationService {
       const payees = await this.extractPayeesFromFile(filePath, payeeColumn, fileExtension);
       console.log(`Extracted ${payees.length} payees from file`);
 
-      // OPTIMIZED: Send up to 500 payees per API call for maximum speed
-      const CHUNK_SIZE = 500; // Aggressive batch size for 5x faster processing
-      const CONCURRENT_CALLS = 30; // Maximum concurrent API calls
+      // OPTIMIZED: Tier 5 performance - 30,000 RPM capability
+      const CHUNK_SIZE = 1000; // Maximum batch size for Tier 5 (10x faster than before)
+      const CONCURRENT_CALLS = 100; // Aggressive concurrency for 30,000 RPM
       let processedCount = 0;
       const allClassifications = [];
 
