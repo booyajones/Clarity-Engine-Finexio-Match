@@ -64,9 +64,9 @@ class OpenAIClassificationService {
       const payees = await this.extractPayeesFromFile(filePath, payeeColumn, fileExtension);
       console.log(`Extracted ${payees.length} payees from file`);
 
-      // OPTIMIZED: Tier 5 performance - 30,000 RPM capability
-      const CHUNK_SIZE = 1000; // Maximum batch size for Tier 5 (10x faster than before)
-      const CONCURRENT_CALLS = 100; // Aggressive concurrency for 30,000 RPM
+      // OPTIMIZED: Balanced for reliability and speed
+      const CHUNK_SIZE = 100; // Smaller batches to prevent timeouts
+      const CONCURRENT_CALLS = 50; // High concurrency for parallel processing
       let processedCount = 0;
       const allClassifications = [];
 
@@ -134,10 +134,27 @@ class OpenAIClassificationService {
         progressMessage: `Successfully classified ${payees.length} records`
       });
 
-      // Start next modules if enabled
-      if (matchingOptions?.enableFinexio !== false) {
-        this.startFinexioMatching(batchId);
-      }
+      // Start pipeline for enabled modules
+      console.log('Starting pipeline modules with options:', matchingOptions);
+      const { pipelineOrchestrator } = await import('./pipelineOrchestrator');
+      
+      // Build module options based on matchingOptions
+      const moduleOptions = {
+        finexio: { enableFinexio: matchingOptions?.enableFinexio },
+        googleAddress: { enableGoogleAddressValidation: matchingOptions?.enableGoogleAddressValidation },
+        mastercard: { enableMastercard: matchingOptions?.enableMastercard },
+        akkio: { enableAkkio: matchingOptions?.enableAkkio }
+      };
+      
+      // Execute modules in sequence
+      const enabledModules = [];
+      if (matchingOptions?.enableFinexio !== false) enabledModules.push('finexio');
+      if (matchingOptions?.enableGoogleAddressValidation !== false) enabledModules.push('googleAddress');
+      if (matchingOptions?.enableMastercard !== false) enabledModules.push('mastercard');
+      if (matchingOptions?.enableAkkio === true) enabledModules.push('akkio'); // Akkio requires explicit enable
+      
+      // Run the pipeline with enabled modules
+      pipelineOrchestrator.runPipeline(batchId, enabledModules, moduleOptions);
 
     } catch (error) {
       console.error(`Classification error for batch ${batchId}:`, error);
