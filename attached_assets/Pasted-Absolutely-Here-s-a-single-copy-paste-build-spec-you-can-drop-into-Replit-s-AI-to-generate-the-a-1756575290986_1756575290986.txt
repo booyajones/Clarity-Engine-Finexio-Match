@@ -1,0 +1,330 @@
+Absolutely. Here’s a single, copy-paste “build spec” you can drop into Replit’s AI to generate the app. It’s exhaustive, opinionated, and production-leaning while staying pragmatic for Replit.
+
+⸻
+
+PROMPT FOR REPLIT AI
+
+You are a senior full-stack engineer. Build a production-ready “Finexio Payee Matcher” service that answers this business need:
+
+Given a list of new payee names from a new customer and a network of ~120,000 existing payees, determine whether each new payee already exists in our network with very high precision, fast batch throughput, and auditable decisions. Use a hybrid method: deterministic normalization + fast fuzzy candidates + vector search + supervised classifier. Only use a small LLM reranker on borderline cases and keep it optional.
+
+Tech stack and project shape
+	•	Language: Python 3.11
+	•	API: FastAPI + Uvicorn
+	•	Data: PostgreSQL 15+ with pg_trgm and pgvector extensions
+	•	ORM: SQLAlchemy 2.x
+	•	Search/Similarity: pg_trgm for trigram similarity, pgvector for ANN
+	•	String metrics: rapidfuzz
+	•	Phonetics: doublemetaphone (python-doublemetaphone)
+	•	Modeling: scikit-learn (LogReg + calibration)
+	•	Background: concurrent.futures ThreadPoolExecutor for batch work
+	•	Obs: structlog logging, Prometheus metrics
+	•	Packaging: pyproject.toml
+	•	Tests: pytest
+	•	Optional: OpenAI for embeddings and a tiny reranker
+	•	CI sanity: a few pytest checks
+
+Create this file tree:
+
+app/
+  __init__.py
+  config.py
+  db.py
+  models.py
+  schema.sql
+  migrations/ (alembic optional; simple SQL is fine)
+  canonicalize.py
+  features.py
+  classifier.py
+  candidates.py
+  matching.py
+  routers/
+    __init__.py
+    health.py
+    ingest.py
+    match.py
+    review.py
+  ui/
+    templates/
+      review.html
+    static/
+  utils.py
+  telemetry.py
+main.py
+tests/
+  test_canonicalize.py
+  test_features.py
+  test_match_smoke.py
+pyproject.toml
+README.md
+.env.example
+
+Environment and config
+
+Implement app/config.py using pydantic Settings with these env vars and defaults:
+
+DATABASE_URL                  # e.g., postgresql://user:pass@host:5432/finexio
+OPENAI_API_KEY                # optional
+EMBEDDINGS_PROVIDER=openai|local   default=openai
+EMBEDDING_MODEL=text-embedding-3-large
+EMBEDDING_DIM=1024                # allow override (e.g., 512, 1536, 3072)
+RERANK_PROVIDER=openai|none       default=none
+TOPK_TRIGRAM=50
+TOPK_VECTOR=50
+TOPK_PHONETIC=50
+K_UNION=120                       # after union/dedupe of candidates
+T_HIGH=0.97                       # auto-match threshold
+T_LOW=0.60                        # review threshold
+BATCH_WORKERS=8
+BATCH_CHUNK_SIZE=1000
+LOG_LEVEL=INFO
+ENABLE_REVIEW_UI=true
+
+Dependencies to install
+	•	fastapi, uvicorn[standard], sqlalchemy, psycopg[binary], pydantic, structlog
+	•	rapidfuzz, python-doublemetaphone, numpy, pandas, scikit-learn, joblib
+	•	prometheus-client
+	•	openai (optional; only when OPENAI_API_KEY is present)
+
+Database schema and indexes
+
+Create app/schema.sql and ensure it runs at startup (idempotent):
+
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS payees (
+  payee_id       BIGSERIAL PRIMARY KEY,
+  name_raw       TEXT NOT NULL,
+  name_canon     TEXT NOT NULL,
+  name_tokens    TEXT[] NOT NULL,
+  dm_codes       TEXT[] NOT NULL,     -- double metaphone codes
+  name_vec       VECTOR(1024),         -- dimension configurable; migrate if changed
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- GIN trigram index for fast fuzzy char similarity on canonical name
+CREATE INDEX IF NOT EXISTS payees_name_trgm_idx
+  ON payees USING GIN (name_canon gin_trgm_ops);
+
+-- HNSW for cosine similarity on name_vec
+CREATE INDEX IF NOT EXISTS payees_name_vec_hnsw
+  ON payees USING hnsw (name_vec vector_cosine_ops);
+
+-- Keep a table for labeled training data
+CREATE TABLE IF NOT EXISTS labels (
+  label_id   BIGSERIAL PRIMARY KEY,
+  q_name_raw TEXT NOT NULL,
+  q_name_canon TEXT NOT NULL,
+  c_payee_id BIGINT NOT NULL REFERENCES payees(payee_id) ON DELETE CASCADE,
+  y          BOOLEAN NOT NULL,            -- 1=same entity, 0=different
+  meta       JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Review queue for borderline matches
+CREATE TABLE IF NOT EXISTS review_queue (
+  rq_id BIGSERIAL PRIMARY KEY,
+  q_name_raw TEXT NOT NULL,
+  q_name_canon TEXT NOT NULL,
+  candidates JSONB NOT NULL,              -- list with scores & features
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  status TEXT NOT NULL DEFAULT 'open'     -- open|approved|rejected
+);
+
+app/db.py should connect, run schema.sql once, and expose a Session factory. Ensure updated_at is maintained by triggers or application code.
+
+Canonicalization rules
+
+Create app/canonicalize.py with a deterministic canonicalizer:
+	•	Lowercase
+	•	Unicode NFKD, strip diacritics
+	•	Replace non-alnum [^a-z0-9& ] with space
+	•	Drop generic words and corporate suffixes
+	•	Words: the, of, and, group, company, services, holdings, solutions, global, international
+	•	Corporate suffixes (broad): co, inc, incorporated, llc, l.l.c, ltd, limited, corp, corporation, plc, gmbh, bv, nv, sa, ag, oy, kk, srl, spa, pty, kft, sp z o.o, s.a., s.a.s., aps, ab, as, oyj, k.k., nv, bvba, e.k.
+	•	Collapse whitespace
+	•	Tokenize → unique tokens → sort
+	•	Build name_canon from sorted tokens
+	•	Generate Double Metaphone for each token; flatten codes
+
+Return a dict:
+
+{
+  "canon": str,
+  "tokens": List[str],
+  "dm_codes": List[str]
+}
+
+Add fast paths for trivial exact matches and very short names.
+
+Embeddings
+
+Create utils.py functions:
+	•	get_embedding(text: str) -> np.ndarray
+	•	If EMBEDDINGS_PROVIDER == 'openai', call OpenAI text-embedding-3-large with the configured dimension. Input is the canonicalized string only, never the raw name. Cache in-process LRU and persist in DB for payees and for query names inside batch runs.
+	•	If local, return a simple hashed random-projection vector of fixed dimension as a placeholder so the system remains fully offline during dev. Keep code swappable later.
+
+Candidate generation
+
+Create app/candidates.py with three complementary views. Implement each as a function that accepts a canonicalized query name and returns a list of (payee_id, score, why).
+	1.	Trigram view using pg_trgm:
+	•	SQL: SELECT payee_id, name_canon, similarity(name_canon, :q) AS score FROM payees WHERE name_canon % :q ORDER BY score DESC LIMIT :k;
+	2.	Vector view using pgvector:
+	•	Compute q_vec.
+	•	SQL: SELECT payee_id, name_canon, (1 - (name_vec <=> :q_vec)) AS cos_sim FROM payees ORDER BY name_vec <=> :q_vec LIMIT :k;
+	•	Return score=cos_sim.
+	3.	Phonetic view:
+	•	Pull a small superset via SQL on rare tokens first if possible, else scan the top few thousand by trigram for speed.
+	•	Score by overlap counts of Double Metaphone codes between query and candidate tokens. Normalize by token count.
+
+Union, dedupe by payee_id, and keep top K_UNION by the max rank-normalized score across views. Attach a provenance field like why=["trgm:0.84","vec:0.91","dm:0.67"].
+
+Feature engineering
+
+Create app/features.py that builds a vector of cheap features for a (q_name, candidate_record) pair:
+	•	RapidFuzz:
+	•	token_set_ratio
+	•	token_sort_ratio
+	•	partial_ratio
+	•	normalized_distance metrics
+	•	jaro_winkler_similarity
+	•	pg_trgm similarity (from candidate set)
+	•	Cosine similarity (from vector set)
+	•	Phonetic overlap stats: exact count overlap, Jaccard of dm_codes
+	•	Length features: abs(len(q) - len(c)), token count delta
+	•	Rare token indicators: compute IDF on payees.name_tokens once at startup, then sum IDF for overlaps
+	•	Initials match flags: if tokens look like initials (e.g., j p morgan vs jpmorgan)
+
+Return a dense np.ndarray and a sidecar dict of feature names → values for explainability.
+
+Classifier + calibration
+
+Create app/classifier.py:
+	•	Provide two modes:
+	1.	Cold start “heuristic classifier” if no model file exists:
+	•	Weighted sum of a few features with hand-tuned weights to be conservative. This makes the system usable from day one.
+	2.	Trained model:
+	•	Read data/labels.csv if present or pull from the labels table.
+	•	Train sklearn.linear_model.LogisticRegression on features.
+	•	Wrap in CalibratedClassifierCV with isotonic or Platt logistic.
+	•	Persist to artifacts/model.joblib plus artifacts/feature_names.json.
+	•	Expose predict_proba(features) -> float and a why() explainer that returns top contributing features for logging.
+
+Matching pipeline
+
+Create app/matching.py:
+	•	match_one(name_raw: str) -> {decision, best_match?, confidence, candidates[]}
+	1.	Canonicalize
+	2.	Candidate union from trigram + vector + phonetic
+	3.	For each candidate, compute features and p = classifier.predict_proba(features)
+	4.	Pick the top candidate by p
+	5.	Decision:
+	•	if p >= T_HIGH → decision="auto_match"
+	•	elif T_LOW <= p < T_HIGH → decision="needs_review", push into review_queue
+	•	else → decision="no_match"
+	6.	If RERANK_PROVIDER=openai and T_LOW <= p < T_HIGH, call a small LLM function on the top 5–10 pairs:
+	•	Prompt: “Are these two payee names the same business entity? Respond with JSON {same: true|false, confidence: 0..1, reason: ‘…’}”
+	•	Only override the decision if the LLM returns same=true with confidence ≥ 0.90 and your original p ≥ 0.5.
+	7.	Return a compact JSON with the ruling, confidence, chosen payee_id if any, and a few “why” reasons.
+	•	match_batch(names: List[str]):
+	•	Chunk by BATCH_CHUNK_SIZE, run in ThreadPoolExecutor with BATCH_WORKERS.
+	•	Stream results as NDJSON in the response for large uploads.
+
+API endpoints
+
+Create routers under app/routers/:
+	•	GET /health → “ok”
+	•	POST /v1/payees/ingest
+	•	Body: CSV upload or JSON list of {payee_id?, name} for the existing network.
+	•	For each, canonicalize, embed if enabled, upsert rows. Return counts.
+	•	POST /v1/match  (single)
+	•	Body: { "name": "Acme Inc." }
+	•	Return: decision, confidence, matched payee_id?, and top 5 candidates with scores.
+	•	POST /v1/match/batch  (bulk)
+	•	Body: { "names": ["...", "..."] }
+	•	Return streaming NDJSON or a JSON array if small.
+	•	GET /v1/review/open  → list open review items
+	•	POST /v1/review/{rq_id}/approve or /reject → writes to labels and updates status
+	•	GET /metrics → Prometheus metrics
+
+If ENABLE_REVIEW_UI=true, render ui/templates/review.html to manage the queue in a simple table with approve/reject buttons. Keep it minimal and fast.
+
+OpenAI usage rules
+	•	Only send canonicalized name strings to OpenAI for embeddings or rerank prompts.
+	•	Gate all OpenAI calls on the presence of OPENAI_API_KEY.
+	•	Rate-limit and add a simple retry with jitter.
+	•	Cache embeddings for identical canonical strings.
+
+Performance and correctness targets
+	•	Network size: 120k payees, expandable to 500k without redesign.
+	•	P95 latency for single match, with embeddings cached: under 150 ms on a small VM with a warm DB.
+	•	Batch of 10k names completes in minutes, not hours. Stream results.
+	•	Precision goal for auto-match: ≥ 0.995 on internal validation. Tune T_HIGH to hit this.
+	•	Recall at K (candidate gen): ≥ 0.98 that the true match is in the union candidate set.
+
+Telemetry and logging
+
+Implement app/telemetry.py:
+	•	structlog JSON logs for each decision with fields:
+	•	q_name_canon, chosen_payee_id, decision, confidence, top_features, candidate_count, lat_ms
+	•	Prometheus counters:
+	•	matches_total{decision=...}
+	•	review_queue_open
+	•	embedding_calls_total
+	•	candidate_latency_ms, features_latency_ms, decision_latency_ms
+
+Tests
+	•	test_canonicalize.py:
+	•	Cases like “ACME, LLC” ≈ “Acme Inc”, “J.P. Morgan” ≈ “JPMorgan”, “Schneider Electric” vs “Snyder Electric” stays not a match without strong evidence.
+	•	test_features.py:
+	•	Validate feature ranges and monotonicity on near/clear pairs.
+	•	test_match_smoke.py:
+	•	Seed a few dozen payees, then verify match_one behavior and thresholds.
+
+Sample data + quickstart
+	•	Include data/sample_payees.csv with ~60 names including variants and near-misses.
+	•	Add a make_sample_network.py script to ingest and embed them.
+	•	README should include:
+	1.	Create a Neon or Supabase Postgres.
+	2.	Set DATABASE_URL in Replit Secrets.
+	3.	If using OpenAI, set OPENAI_API_KEY.
+	4.	Run python make_sample_network.py.
+	5.	Start server: uvicorn main:app --reload.
+
+Implementation details to include in code
+	•	Token and suffix lists in canonicalize.py as constants.
+	•	An idf.json file built at startup from corpus tokens for “rare token” features.
+	•	candidates.py must guard against empty vectors. If name_vec is NULL, skip vector view.
+	•	In classifier.py, if there are < 100 labeled pairs, use heuristic mode and log a warning.
+	•	In matching.py, always attach “reason codes” like ["trgm=0.86","vec=0.93","jw=0.91","dm=0.67"] to the winning candidate in the response.
+	•	In routers/ingest.py, batch DB writes using COPY or chunked INSERTs.
+	•	Add minimal backpressure in batch endpoints to control memory.
+	•	Add a /v1/model/retrain endpoint to retrain from labels and persist artifacts.
+
+Security and privacy
+	•	Do not log raw customer inputs by default. Log canonical names only.
+	•	No PII beyond names handled here.
+	•	Provide an env flag SCRUB_LOGS=true to fully disable input echoing in logs.
+
+Acceptance checklist
+	•	Running app seeds schema and boots without errors.
+	•	/health returns ok.
+	•	After seeding sample payees, /v1/match returns an auto_match for obvious duplicates and no_match for clearly different names.
+	•	/v1/match/batch processes data/new_names_sample.csv and streams NDJSON results.
+	•	Review UI lists items and writes labels on approve/reject.
+	•	Model artifacts appear after retrain and are used on next requests.
+
+⸻
+
+END PROMPT FOR REPLIT AI
+
+⸻
+
+If you want, I can also give you:
+	•	a prewritten canonicalize.py with the exact suffix lists,
+	•	the default feature set and weights for a strong heuristic cold start,
+	•	and a tiny script to load 120k names fast with embeddings.
+
+Say the word and I’ll paste those files ready to drop in.
