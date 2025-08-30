@@ -1,0 +1,288 @@
+Totally. Here’s a copy-paste prompt you can hand to Replit’s LLM to drive deep QA, testing, and debugging on the Payee Matcher before it ever bothers you.
+
+---
+
+# PROMPT FOR REPLIT AI — DEEP QA, TESTING, AND DEBUGGING
+
+You are a senior SDET and backend engineer. Your job is to **own quality end-to-end** for the “Finexio Payee Matcher” service already specified. Do not ask the human to review until all checks below pass. Produce fixes proactively. When something fails, diagnose, patch, and re-run the full suite.
+
+## What to deliver before pinging the human
+
+1. A **green** test suite covering unit, integration, property-based, and end-to-end API tests.
+2. **Coverage ≥ 90% overall** and **≥ 98%** for `canonicalize.py` and `features.py`.
+3. A **reproducible evaluation run** that meets these gates on the sample and synthetic datasets:
+
+   * Candidate generation Recall\@K\_union ≥ 0.98.
+   * Auto-match precision ≥ 0.995 at `T_HIGH`.
+4. A short **QA report** `qa_reports/summary.md` with:
+
+   * What you tested.
+   * Metrics and thresholds.
+   * Flame graph or top hotspots if you optimized performance.
+   * Any remaining edge cases and how to handle them.
+5. No raw inputs logged. Canonicalized strings only.
+6. All OpenAI calls mocked in tests.
+7. `make qa` runs the whole quality pipeline locally in one command and exits 0.
+
+## Tooling to add
+
+Install and configure:
+
+* Testing: `pytest`, `pytest-cov`, `pytest-xdist`, `hypothesis`, `freezegun`
+* API tests: `httpx`, `anyio`, `starlette`
+* Static: `ruff`, `mypy`, `types-requests`
+* Security: `bandit`, `pip-audit`
+* Perf: `pytest-benchmark`
+* Optional: `testcontainers[postgres]` for real Postgres with `pg_trgm` and `pgvector`
+  If Testcontainers is unavailable, use a temporary **Neon** or **Supabase** Postgres for tests and tear it down at the end.
+
+Create or update:
+
+```
+pytest.ini
+mypy.ini
+ruff.toml
+Makefile
+qa_reports/         # artifacts live here
+```
+
+### pytest.ini
+
+```ini
+[pytest]
+addopts = -q -ra --cov=app --cov-report=term-missing:skip-covered --cov-fail-under=90
+testpaths = tests
+filterwarnings =
+    ignore::DeprecationWarning
+```
+
+### ruff.toml
+
+```toml
+line-length = 100
+target-version = "py311"
+select = ["E","F","I","B","UP","N"]
+ignore = ["E203","E501"]
+```
+
+### mypy.ini
+
+```ini
+[mypy]
+python_version = 3.11
+warn_unused_ignores = True
+disallow_untyped_defs = True
+ignore_missing_imports = True
+```
+
+### Makefile
+
+```make
+.PHONY: unit integration e2e eval bench lint type sec qa all
+
+unit:        # fast unit + property tests
+\tpytest -q -k "unit or property" -n auto
+
+integration: # db + candidates + classifier
+\tpytest -q -k "integration" -n 1
+
+e2e:         # API surface with httpx client
+\tpytest -q -k "e2e" -n 1
+
+eval:        # metrics gates
+\tpython tests/run_eval.py
+
+bench:
+\tpytest -q tests/test_perf_bench.py --benchmark-only
+
+lint:
+\truff check .
+\tmypy app
+
+sec:
+\tbandit -q -r app || true
+\tpip-audit -q || true
+
+qa: lint type sec unit integration e2e eval
+\t@echo "QA pipeline complete."
+type: ; mypy app
+
+all: qa bench
+```
+
+## Test data strategy
+
+Create `tests/data/` with:
+
+* `sample_payees.csv` with 200+ realistic names and variants. Include diacritics, punctuation, spacings, corp suffixes, transliterations, and tricky near-misses.
+* `labeled_pairs.csv` with at least 500 pairs: positives, hard negatives, and near-duplicates. Include columns: `q, c, same, reason`.
+
+Generate **synthetic** names with scripts:
+
+* Add separators, remove vowels, expand or drop suffixes, join or split tokens, phonetic substitutions like sch→s, ph→f, i/y swaps.
+* Save to `tests/data/synth_*.csv` and mark ground truth for evaluation.
+
+## Test database setup
+
+Prefer **Testcontainers Postgres 16** with `pg_trgm` and `vector`.
+If not available:
+
+* Use env var `TEST_DATABASE_URL` that points to a disposable Postgres.
+* Create and drop a dedicated schema per run.
+
+Provide a helper `tests/db_utils.py` that:
+
+* Spins up the DB or schema.
+* Runs `app/schema.sql`.
+* Seeds a small network from `sample_payees.csv`.
+* Tears down cleanly.
+
+## Mocking OpenAI and external calls
+
+* Add `app/utils_openai.py` wrapper. In tests, monkeypatch it to a **pure stub**:
+
+  * For `get_embedding(text)`, return a deterministic vector from `hash(text)` into the target dimension.
+  * For reranker, return `same=false` unless the cosine of stub embeddings exceeds 0.9.
+* Assert that production code never calls OpenAI when `OPENAI_API_KEY` is absent.
+
+## Unit and property tests
+
+Create these files and cover the listed behaviors.
+
+### tests/test\_canonicalize\_unit.py  \[unit, property]
+
+* Invariance to case, punctuation, diacritics.
+* Suffix and generic word removal is correct.
+* Tokens are unique and sorted.
+* Phonetic codes exist for all tokens.
+* **Property tests with Hypothesis**:
+
+  * Adding a corporate suffix does not change `canon`.
+  * Inserting extra spaces or punctuation does not change `canon`.
+  * Token permutation does not change `canon`.
+* Edge cases: empty string, one-character tokens, all-numeric names, mixed scripts.
+
+### tests/test\_features\_unit.py  \[unit]
+
+* Monotonicity: when edit distance drops, RapidFuzz similarity should not drop.
+* Phonetic overlap boosts the feature when codes match.
+* Rare token score increases when overlapping rare tokens.
+
+### tests/test\_classifier\_unit.py  \[unit]
+
+* Heuristic mode works with no labels.
+* With small labels, model trains, persists, and loads.
+* Calibration probabilities are in \[0,1] and move in the right direction for known pairs.
+
+## Integration tests
+
+### tests/test\_candidates\_integration.py  \[integration]
+
+* Seed network with tricky pairs:
+
+  * “J.P. Morgan Chase & Co” vs “JPMorgan Chase”
+  * “Schneider Electric SE” vs “Snyder Electric LLC” should not rank top unless other signals agree
+  * “UCLA Health” vs “University of California Los Angeles Health”
+* Assert Recall\@K\_union ≥ 0.98 for a curated set.
+* Assert each view returns quickly. Time budget per query under 25 ms on test hardware.
+
+### tests/test\_matching\_integration.py  \[integration]
+
+* Run `match_one` across a dozen known positives and hard negatives.
+* Validate decision rules for `auto_match`, `needs_review`, and `no_match`.
+* Ensure reasons include key feature values.
+
+## End-to-end API tests
+
+### tests/test\_api\_e2e.py  \[e2e]
+
+* Use FastAPI TestClient or httpx AsyncClient.
+* `POST /v1/payees/ingest` seeds 100+ items.
+* `POST /v1/match` returns the expected JSON schema and `auto_match` for obvious duplicates.
+* `POST /v1/match/batch` streams NDJSON and finishes within a time budget for 1k names.
+* `GET /v1/review/open` returns only gray zone items.
+* Approve/reject adds a row to `labels` and updates status.
+
+## Evaluation and gates
+
+Create `tests/run_eval.py` that:
+
+* Loads `tests/data/labeled_pairs.csv`.
+* For each pair, runs the real pipeline through candidate gen and classifier.
+* Computes:
+
+  * Recall\@K\_union on candidate generation.
+  * Precision and recall at `T_HIGH` and `T_LOW`.
+* Fails with exit code 1 if gates are not met.
+* Writes `qa_reports/metrics.json` and a small `qa_reports/summary.md` like:
+
+Example `summary.md` structure:
+
+```
+# QA Summary
+- Tests: 412 passed, 0 failed
+- Coverage: 93.7% overall, 99.2% canonicalize, 98.6% features
+- Candidate Recall@K_union: 0.992
+- Auto-match Precision @ T_HIGH=0.97: 0.997
+- Batch 10k synthetic: 2.8 min on test VM, P95 single-match 78 ms
+- Notes: Added rare-token weighting fix in features.py; reduced heap usage in batch scorer.
+```
+
+## Performance checks
+
+Create `tests/test_perf_bench.py` using `pytest-benchmark`:
+
+* Benchmark `canonicalize` on 10k names.
+* Benchmark candidate generation on a seeded network with 120k mocked rows.
+* Benchmark `match_one` end-to-end with embeddings cached.
+  Flag regressions if runtime grows by more than 20% from a stored baseline in `qa_reports/benchmarks.json`.
+
+## Static analysis and security
+
+* `ruff check .` must pass.
+* `mypy app` must pass.
+* `bandit -r app` runs and reports no high-severity issues.
+* `pip-audit` runs and reports no known critical vulnerabilities for locked deps.
+
+## Logging and privacy tests
+
+* Add tests that assert logs never include `name_raw`.
+* Verify OpenAI calls are gated by `OPENAI_API_KEY`.
+* Verify scrubbing when `SCRUB_LOGS=true`.
+
+## Debugging workflow you should follow automatically
+
+1. Run `make qa`.
+2. If anything fails, open the failing test, reproduce locally, add focused logs in the failing code path, and fix.
+3. Re-run `make qa`.
+4. If Recall\@K dips, inspect which view missed. Expand suffix list or adjust candidate K per view.
+5. If precision dips, raise `T_HIGH` or tweak feature weights in heuristic mode, then retrain when labels exist.
+6. Keep pushing fixes until all green. Do not escalate until the pipeline passes.
+
+## Artifacts to produce
+
+* `qa_reports/summary.md`
+* `qa_reports/metrics.json`
+* `qa_reports/benchmarks.json`
+* Coverage HTML under `qa_reports/htmlcov/`
+* If you profiled, include `qa_reports/profile.txt` with top 20 functions.
+
+## Secrets and env for tests
+
+If you cannot run Testcontainers:
+
+* Expect `TEST_DATABASE_URL` to exist. If not set, provision a temporary Neon DB, create a schema named `test_<random>`, and drop it at the end.
+* Never hit real OpenAI in tests.
+
+## Final checklist before you notify the human
+
+* [ ] `make qa` exits 0.
+* [ ] All gates met and recorded in `qa_reports/summary.md`.
+* [ ] No TODOs or `print` statements in app code.
+* [ ] Clear notes for any non-blocking edge cases.
+
+When all green, present exactly three things: a one-paragraph summary, the key metrics, and a link to `qa_reports/summary.md`. Otherwise keep working.
+
+---
+
+If you want me to tailor this for a Neon test DB or wire up Testcontainers in Replit, I can draft the exact config and helper code next.

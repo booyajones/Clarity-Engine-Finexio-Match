@@ -19,6 +19,24 @@ class FinexioModule implements PipelineModule {
   async execute(batchId: number, options: any = {}): Promise<void> {
     console.log(`💼 Finexio Module: Starting for batch ${batchId}`);
     
+    // Check if Finexio matching is enabled
+    if (options.enableFinexio === false) {
+      console.log('Finexio matching disabled - skipping');
+      
+      // Get batch to get total records  
+      const batch = await storage.getUploadBatchById(batchId);
+      const totalRecords = batch?.processedRecords || batch?.totalRecords || 0;
+      
+      await storage.updateUploadBatch(batchId, {
+        finexioMatchingStatus: 'skipped',
+        finexioMatchingCompletedAt: new Date(),
+        finexioMatchingProgress: totalRecords,
+        finexioMatchingProcessed: totalRecords,
+        finexioMatchingTotal: totalRecords
+      });
+      return;
+    }
+    
     try {
       // Update status
       await storage.updateUploadBatch(batchId, {

@@ -13,7 +13,7 @@ const openai = new OpenAI({
 });
 
 // Maximum concurrent OpenAI calls for massive throughput
-const classificationLimit = pLimit(20);
+const classificationLimit = pLimit(30);
 
 export interface ClassificationResult {
   payeeType: string;
@@ -62,9 +62,9 @@ class OpenAIClassificationService {
       const payees = await this.extractPayeesFromFile(filePath, payeeColumn, fileExtension);
       console.log(`Extracted ${payees.length} payees from file`);
 
-      // OPTIMIZED: Send up to 100 payees per API call for reliability
-      const CHUNK_SIZE = 100; // Number of payees per OpenAI call (balanced for speed and reliability)
-      const CONCURRENT_CALLS = 20; // Number of concurrent API calls
+      // OPTIMIZED: Send up to 500 payees per API call for maximum speed
+      const CHUNK_SIZE = 500; // Aggressive batch size for 5x faster processing
+      const CONCURRENT_CALLS = 30; // Maximum concurrent API calls
       let processedCount = 0;
       const allClassifications = [];
 
@@ -105,10 +105,15 @@ class OpenAIClassificationService {
         allClassifications.push(...classifications);
       }
 
-      // Save all classifications (only if we have some)
+      // Save all classifications in batches to avoid database parameter limits
       if (allClassifications.length > 0) {
         console.log(`Saving ${allClassifications.length} classifications`);
-        await storage.createPayeeClassifications(allClassifications);
+        const SAVE_BATCH_SIZE = 1000; // Max records per database insert
+        for (let i = 0; i < allClassifications.length; i += SAVE_BATCH_SIZE) {
+          const batch = allClassifications.slice(i, i + SAVE_BATCH_SIZE);
+          console.log(`Saving batch ${Math.floor(i / SAVE_BATCH_SIZE) + 1}/${Math.ceil(allClassifications.length / SAVE_BATCH_SIZE)}: ${batch.length} records`);
+          await storage.createPayeeClassifications(batch);
+        }
       } else {
         console.log(`No classifications to save for batch ${batchId}`);
         await storage.updateUploadBatch(batchId, {
