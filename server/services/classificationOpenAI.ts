@@ -189,8 +189,21 @@ class OpenAIClassificationService {
       
       const payees: PayeeData[] = [];
       const nameColumn = payeeColumn || this.detectNameColumn(data[0]);
+      console.log(`Using column '${nameColumn}' for payee names from ${data.length} rows`);
+      
+      // Also try case-insensitive column access if direct access fails
       for (const row of data) {
-        const payeeName = row[nameColumn];
+        let payeeName = row[nameColumn];
+        
+        // If not found, try case-insensitive search
+        if (!payeeName) {
+          const keys = Object.keys(row);
+          const matchedKey = keys.find(k => k.toLowerCase() === nameColumn.toLowerCase());
+          if (matchedKey) {
+            payeeName = row[matchedKey];
+          }
+        }
+        
         if (payeeName && typeof payeeName === 'string' && payeeName.trim()) {
           payees.push({
             originalName: payeeName.trim(),
@@ -198,6 +211,8 @@ class OpenAIClassificationService {
           });
         }
       }
+      
+      console.log(`Extracted ${payees.length} valid payees from Excel file`);
       
       // Remove duplicates
       const uniquePayees = new Map<string, PayeeData>();
@@ -246,7 +261,10 @@ class OpenAIClassificationService {
   }
 
   private detectNameColumn(row: Record<string, any>): string {
-    if (!row) return Object.keys(row)[0];
+    if (!row) {
+      console.log('No data row provided for column detection');
+      return 'Company Name'; // Default fallback
+    }
     
     const nameVariations = [
       'company name', 'company_name', 'companyname',
@@ -257,17 +275,24 @@ class OpenAIClassificationService {
       'name', 'company'
     ];
     const keys = Object.keys(row);
+    console.log(`Available columns: ${keys.join(', ')}`);
     
     // Try exact match first (case-insensitive)
     for (const variation of nameVariations) {
       const found = keys.find(key => key.toLowerCase() === variation);
-      if (found) return found;
+      if (found) {
+        console.log(`Found exact match column: '${found}' (matched '${variation}')`);
+        return found;
+      }
     }
     
     // Then try partial match
     for (const variation of nameVariations) {
       const found = keys.find(key => key.toLowerCase().includes(variation));
-      if (found) return found;
+      if (found) {
+        console.log(`Found partial match column: '${found}' (contains '${variation}')`);
+        return found;
+      }
     }
     
     // Default to first column
