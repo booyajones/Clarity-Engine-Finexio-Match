@@ -1,4 +1,3 @@
-import Header from "@/components/layout/header";
 import KpiCards from "@/components/dashboard/kpi-cards";
 import ClassificationChart from "@/components/dashboard/classification-chart";
 import UploadWidget from "@/components/dashboard/upload-widget";
@@ -22,17 +21,14 @@ export default function Dashboard() {
   const activities: ActivityItem[] = [];
 
   return (
-    <div className="flex-1 flex flex-col">
-      <Header title="Dashboard" subtitle="Overview of classification activity" />
-      <main className="flex-1 p-6 overflow-auto space-y-6">
-        {stats && <KpiCards stats={stats} />}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <ClassificationChart data={chartData} />
-          <UploadWidget />
-        </div>
-        <BusinessInsights categories={categories} activities={activities} />
-        <ReviewQueue />
-      </main>
+    <div className="space-y-6">
+      {stats && <KpiCards stats={stats} />}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <ClassificationChart data={chartData} />
+        <UploadWidget />
+      </div>
+      <BusinessInsights categories={categories} activities={activities} />
+      <ReviewQueue />
     </div>
   );
 }

@@ -1,4 +1,3 @@
-import Header from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -209,11 +208,7 @@ export default function Upload() {
   };
 
   return (
-    <div className="flex-1 flex flex-col">
-      <Header title="Upload Data" subtitle="Upload CSV or Excel files for high-accuracy OpenAI classification (95%+ confidence only)" />
-
-      <main className="flex-1 p-6 overflow-auto">
-        <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-6xl mx-auto space-y-6">
 
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -435,8 +430,6 @@ export default function Upload() {
               </div>
             </div>
           </div>
-        </div>
-      </main>
     </div>
   );
 }

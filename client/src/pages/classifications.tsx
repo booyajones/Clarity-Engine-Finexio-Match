@@ -1,4 +1,3 @@
-import Header from "@/components/layout/header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -74,11 +73,8 @@ export default function Classifications() {
   };
 
   return (
-    <div className="flex-1 flex flex-col">
-      <Header
-        title="Classifications"
-        subtitle="View and manage all payee classifications"
-      >
+    <div className="space-y-6">
+      <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={handleRefresh}>
           <i className="fas fa-sync-alt mr-2"></i>
           Refresh
@@ -87,13 +83,11 @@ export default function Classifications() {
           <Download className="w-4 h-4 mr-2" />
           Export All
         </Button>
-      </Header>
-
-      <main className="flex-1 p-6 overflow-auto">
-        <Card className="shadow-sm">
-          <CardContent className="p-6">
-            {/* Filters */}
-            <div className="flex flex-col sm:flex-row gap-4 mb-6">
+      </div>
+      <Card className="shadow-sm">
+        <CardContent className="p-6">
+          {/* Filters */}
+          <div className="flex flex-col sm:flex-row gap-4 mb-6">
               <div className="flex-1">
                 <Input
                   placeholder="Search payees..."
@@ -256,7 +250,6 @@ export default function Classifications() {
             )}
           </CardContent>
         </Card>
-      </main>
     </div>
   );
 }
