@@ -5,10 +5,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useRef } from "react";
-import type { UploadBatch, ClassificationStats } from "@/lib/types";
+import type { UploadBatch } from "@/lib/types";
 import ProgressTracker from "@/components/ui/progress-tracker";
 import { Badge } from "@/components/ui/badge";
 import { Trash2 } from "lucide-react";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
 interface FilePreview {
   filename: string;
@@ -24,7 +25,7 @@ export default function Upload() {
   const [filePreview, setFilePreview] = useState<FilePreview | null>(null);
   const [selectedColumn, setSelectedColumn] = useState<string>("");
 
-  const { data: batches = [] } = useQuery<UploadBatch[]>({
+  const { data: batches = [], isLoading: isBatchesLoading } = useQuery<UploadBatch[]>({
     queryKey: ["/api/upload/batches"],
     refetchInterval: 1000, // Poll every 1 second for faster progress updates
   });
@@ -218,7 +219,7 @@ export default function Upload() {
                 <h2 className="text-lg font-medium mb-4">Upload File</h2>
                 
                 <div
-                  className={`border-2 border-dashed rounded p-6 text-center ${
+                  className={`border-2 border-dashed rounded p-6 text-center transition-smooth ${
                     dragActive ? "border-blue-500 bg-blue-50" : "border-gray-300"
                   }`}
                   onDragEnter={handleDrag}
@@ -235,9 +236,11 @@ export default function Upload() {
                     className="hidden"
                     disabled={previewMutation.isPending}
                   />
-                  
+
                   {previewMutation.isPending ? (
-                    <p>Analyzing file...</p>
+                    <div className="flex items-center justify-center">
+                      <LoadingSpinner className="h-6 w-6" />
+                    </div>
                   ) : (
                     <>
                       <p className="mb-2">Drop CSV or Excel file here</p>
@@ -248,13 +251,21 @@ export default function Upload() {
               </div>
 
               {/* Column Selection */}
-              {filePreview && (
+              {previewMutation.isPending && (
+                <div className="border rounded-lg p-6 space-y-4">
+                  <div className="h-4 w-1/3 skeleton transition-smooth"></div>
+                  <div className="h-10 skeleton transition-smooth"></div>
+                  <div className="h-10 skeleton transition-smooth"></div>
+                </div>
+              )}
+
+              {filePreview && !previewMutation.isPending && (
                 <div className="border rounded-lg p-6">
                   <h2 className="text-lg font-medium mb-4">Select Column</h2>
                   <p className="text-sm text-gray-600 mb-4">
                     Which column contains the payee names?
                   </p>
-                  
+
                   <div className="space-y-4">
                     <Select value={selectedColumn} onValueChange={setSelectedColumn}>
                       <SelectTrigger>
@@ -268,12 +279,13 @@ export default function Upload() {
                         ))}
                       </SelectContent>
                     </Select>
-                    
-                    <Button 
+
+                    <Button
                       onClick={handleProcessFile}
                       disabled={!selectedColumn || processMutation.isPending}
-                      className="w-full"
+                      className="w-full flex items-center justify-center gap-2"
                     >
+                      {processMutation.isPending && <LoadingSpinner className="h-4 w-4" />}
                       {processMutation.isPending ? "Processing..." : "Process File"}
                     </Button>
                   </div>
@@ -340,15 +352,21 @@ export default function Upload() {
                     )}
                   </div>
                 </div>
-                {batches.length > 0 ? (
+                {isBatchesLoading ? (
                   <div className="space-y-3">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className="h-20 rounded skeleton transition-smooth"></div>
+                    ))}
+                  </div>
+                ) : batches.length > 0 ? (
+                  <div className="space-y-3 transition-smooth">
                     {batches.slice(0, 5).map((batch) => (
-                      <div key={batch.id} className="border rounded p-3">
+                      <div key={batch.id} className="border rounded p-3 transition-smooth">
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center space-x-2">
                             <h3 className="font-medium text-sm">{batch.originalFilename}</h3>
                             <Badge variant={
-                              batch.status === 'completed' ? 'default' : 
+                              batch.status === 'completed' ? 'default' :
                               batch.status === 'processing' ? 'secondary' : 'destructive'
                             }>
                               {batch.status}
