@@ -63,7 +63,10 @@ export default function UploadWidget() {
                     </div>
                   </div>
                   {file.status === "completed" && (
-                    <button className="text-gray-400 hover:text-gray-600">
+                    <button
+                      aria-label={`Download ${file.originalFilename}`}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
                       <i className="fas fa-download text-sm"></i>
                     </button>
                   )}

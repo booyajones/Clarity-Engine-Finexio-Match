@@ -118,6 +118,7 @@ export default function ProgressTracker({ batch, onCancel, onDelete }: ProgressT
               <Button
                 variant="outline"
                 size="sm"
+                aria-label="Cancel batch"
                 onClick={() => {
                   cancelMutation.mutate(batch.id);
                   if (onCancel) onCancel();
@@ -130,6 +131,7 @@ export default function ProgressTracker({ batch, onCancel, onDelete }: ProgressT
             <Button
               variant="outline"
               size="sm"
+              aria-label="Delete batch"
               onClick={() => {
                 deleteMutation.mutate(batch.id);
                 if (onDelete) onDelete();
