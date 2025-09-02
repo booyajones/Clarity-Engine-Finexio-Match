@@ -1,3 +1,5 @@
+import { Bell } from "lucide-react";
+
 interface HeaderProps {
   title: string;
   subtitle?: string;
@@ -14,7 +16,7 @@ export default function Header({ title, subtitle, children }: HeaderProps) {
         </div>
         <div className="flex items-center space-x-4">
           <button className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors">
-            <i className="fas fa-bell text-lg"></i>
+            <Bell className="w-5 h-5" />
             <span className="absolute -top-1 -right-1 w-3 h-3 bg-error-500 rounded-full"></span>
           </button>
           {children}

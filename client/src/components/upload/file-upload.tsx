@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Loader2, UploadCloud, FolderOpen } from "lucide-react";
 
 interface FileUploadProps {
   onUploadSuccess?: (result: any) => void;
@@ -177,9 +178,9 @@ export default function FileUpload({
         
         <div className="w-16 h-16 bg-gray-100 rounded-xl mx-auto mb-4 flex items-center justify-center">
           {isUploading ? (
-            <i className="fas fa-spinner fa-spin text-gray-600 text-2xl"></i>
+            <Loader2 className="w-8 h-8 text-gray-600 animate-spin" />
           ) : (
-            <i className="fas fa-cloud-upload-alt text-gray-600 text-2xl"></i>
+            <UploadCloud className="w-8 h-8 text-gray-600" />
           )}
         </div>
         
@@ -196,11 +197,11 @@ export default function FileUpload({
             <p className="text-xs text-gray-500">{Math.round(uploadProgress)}% uploaded</p>
           </div>
         ) : (
-          <Button 
+          <Button
             className="bg-primary-500 hover:bg-primary-600 text-white"
             disabled={disabled}
           >
-            <i className="fas fa-folder-open mr-2"></i>
+            <FolderOpen className="w-4 h-4 mr-2" />
             Choose File
           </Button>
         )}
