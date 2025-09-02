@@ -2,7 +2,10 @@ import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 
 const navigation = [
-  { name: "Upload", href: "/" },
+  { name: "Dashboard", href: "/" },
+  { name: "Upload", href: "/upload" },
+  { name: "Single Classification", href: "/single" },
+  { name: "Keyword Manager", href: "/keywords" },
   { name: "Classifications", href: "/classifications" },
   { name: "Downloads", href: "/downloads" },
 ];
@@ -29,7 +32,7 @@ export default function Sidebar() {
                 "px-3 py-2 rounded text-sm cursor-pointer",
                 location === item.href
                   ? "bg-blue-50 text-blue-700"
-                  : "text-gray-600 hover:bg-gray-50"
+                  : "text-gray-600 hover:bg-gray-50",
               )}
             >
               {item.name}
