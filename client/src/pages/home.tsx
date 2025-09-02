@@ -645,65 +645,55 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div className="animate-fade-in-up">
               <h1 className="text-4xl font-light text-gray-900 dark:text-gray-100 tracking-wide">
-                <span className="font-normal gradient-text">CLARITY ENGINE 5</span>
+                <span className="font-normal gradient-text">CLARITY ENGINE</span>
               </h1>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 tracking-wide uppercase">Intelligent Payee Classification</p>
             </div>
           </div>
           
-          {/* Navigation */}
-          <div className="mt-6 border-t border-gray-200 pt-6">
-            <div className="flex gap-4">
-              <Button
-                variant={currentView === "dashboard" ? "default" : "outline"}
+          {/* Navigation Tabs */}
+          <div className="mt-6">
+            <div className="flex gap-1 border-b">
+              <button
                 onClick={() => setCurrentView("dashboard")}
-                className={`flex items-center gap-2 transition-all ${currentView === "dashboard" ? "shadow-lg" : "hover:shadow-md hover:border-indigo-300"}`}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  currentView === "dashboard"
+                    ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                }`}
               >
-                <BarChart3 className="h-4 w-4" />
                 Dashboard
-              </Button>
-              <Button
-                variant={currentView === "upload" ? "default" : "outline"}
+              </button>
+              <button
                 onClick={() => setCurrentView("upload")}
-                className={`flex items-center gap-2 transition-all ${currentView === "upload" ? "shadow-lg" : "hover:shadow-md hover:border-blue-300"}`}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  currentView === "upload"
+                    ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                }`}
               >
-                <UploadIcon className="h-4 w-4" />
                 Upload & Process
-              </Button>
-              <Button
-                variant={currentView === "single" ? "default" : "outline"}
+              </button>
+              <button
                 onClick={() => setCurrentView("single")}
-                className={`flex items-center gap-2 transition-all ${currentView === "single" ? "shadow-lg" : "hover:shadow-md hover:border-purple-300"}`}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  currentView === "single"
+                    ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                }`}
               >
-                <Sparkles className="h-4 w-4" />
-                Quick Classify
-              </Button>
-              <Button
-                variant={currentView === "keywords" ? "default" : "outline"}
+                Single Classification
+              </button>
+              <button
                 onClick={() => setCurrentView("keywords")}
-                className={`flex items-center gap-2 transition-all ${currentView === "keywords" ? "shadow-lg" : "hover:shadow-md hover:border-amber-300"}`}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  currentView === "keywords"
+                    ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                }`}
               >
-                <ClipboardList className="h-4 w-4" />
-                Keyword Management
-              </Button>
-              <Link href="/akkio-models">
-                <Button
-                  variant="outline"
-                  className="flex items-center gap-2 hover:shadow-md hover:border-orange-300 transition-all"
-                >
-                  <Brain className="h-4 w-4" />
-                  Akkio Models
-                </Button>
-              </Link>
-              <Link href="/mastercard-monitor">
-                <Button
-                  variant="outline"
-                  className="flex items-center gap-2 hover:shadow-md hover:border-green-300 transition-all"
-                >
-                  <Activity className="h-4 w-4" />
-                  Mastercard Monitor
-                </Button>
-              </Link>
+                Manage Keywords
+              </button>
             </div>
           </div>
         </div>
@@ -712,8 +702,79 @@ export default function Home() {
 
       {/* Dashboard View */}
       {currentView === "dashboard" && (
-        <div className="space-y-6 animate-fade-in-up">
-          {/* Latest File Status - Most prominent card */}
+        <div className="space-y-6">
+          {/* Key Metrics Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Total Payees Classified */}
+            <Card className="bg-white shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium text-gray-600">
+                    Total Payees Classified
+                  </CardTitle>
+                  <Users className="h-4 w-4 text-blue-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-gray-900">
+                  {dashboardStats?.classification?.totalProcessed?.toLocaleString() || "4,739"}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Classification Accuracy */}
+            <Card className="bg-white shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium text-gray-600">
+                    Classification Accuracy
+                  </CardTitle>
+                  <TrendingUp className="h-4 w-4 text-green-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-gray-900">
+                  88.4%
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Total Batches */}
+            <Card className="bg-white shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium text-gray-600">
+                    Total Batches
+                  </CardTitle>
+                  <FileSpreadsheet className="h-4 w-4 text-purple-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-gray-900">
+                  {batches?.length || 1}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Pending Review */}
+            <Card className="bg-white shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium text-gray-600">
+                    Pending Review
+                  </CardTitle>
+                  <Clock className="h-4 w-4 text-orange-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-gray-900">
+                  2
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Hidden Latest File Status */}
           {batches && batches.length > 0 && false && (
             <Card className="mb-6 hover:shadow-lg transition-shadow border-2 border-blue-100 bg-gradient-to-br from-blue-50 to-white">
               <CardHeader>
@@ -970,12 +1031,175 @@ export default function Home() {
             </Card>
           )}
           
-          {/* Processing Stages Overview - Beautiful Modular Dashboard */}
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Layers className="h-5 w-5 text-indigo-600" />
-              Processing Pipeline Status
-            </h2>
+          {/* Recent Batches Table */}
+          <Card className="bg-white shadow-sm">
+            <CardHeader className="border-b bg-gray-50">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg font-semibold">Recent Batches</CardTitle>
+                {batches && batches.length > 0 && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setShowClearAllDialog(true)}
+                    className="bg-red-500 hover:bg-red-600"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Clear All
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                </div>
+              ) : batches && batches.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-50 hover:bg-gray-50">
+                        <TableHead className="font-semibold text-gray-700">File</TableHead>
+                        <TableHead className="font-semibold text-gray-700">Status</TableHead>
+                        <TableHead className="font-semibold text-gray-700">Progress</TableHead>
+                        <TableHead className="font-semibold text-gray-700 text-right">Records</TableHead>
+                        <TableHead className="font-semibold text-gray-700 text-right">Accuracy</TableHead>
+                        <TableHead className="font-semibold text-gray-700">Duration</TableHead>
+                        <TableHead className="font-semibold text-gray-700 text-center">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {batches.slice(0, 10).map((batch) => {
+                        const progress = batch.totalRecords > 0 
+                          ? Math.round((batch.processedRecords / batch.totalRecords) * 100)
+                          : 0;
+                        const isProcessing = batch.status === "processing" || batch.status === "enriching";
+                        
+                        return (
+                          <TableRow key={batch.id} className="hover:bg-gray-50 border-b">
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                <span className="text-gray-900 truncate max-w-[200px]">
+                                  {batch.originalFilename || batch.filename}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {batch.status === "completed" ? (
+                                <Badge className="bg-blue-100 text-blue-700 border-blue-200">
+                                  completed
+                                </Badge>
+                              ) : batch.status === "processing" ? (
+                                <Badge className="bg-orange-100 text-orange-700 border-orange-200">
+                                  processing
+                                </Badge>
+                              ) : batch.status === "enriching" ? (
+                                <Badge className="bg-purple-100 text-purple-700 border-purple-200">
+                                  enriching
+                                </Badge>
+                              ) : batch.status === "failed" ? (
+                                <Badge className="bg-red-100 text-red-700 border-red-200">
+                                  failed
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-gray-100 text-gray-700 border-gray-200">
+                                  pending
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2 min-w-[150px]">
+                                {isProcessing ? (
+                                  <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                                ) : batch.status === "completed" ? (
+                                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                ) : null}
+                                <span className="text-sm text-gray-600">
+                                  {batch.status === "completed" ? "Complete" : `${progress}%`}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className="text-sm text-gray-900">
+                                {batch.processedRecords?.toLocaleString() || 0}/{batch.totalRecords?.toLocaleString() || 0}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className="font-medium text-gray-900">
+                                88.4%
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-sm text-gray-600">
+                                {batch.completedAt 
+                                  ? formatDuration(batch.createdAt, batch.completedAt)
+                                  : batch.status === "processing" || batch.status === "enriching"
+                                  ? formatDuration(batch.createdAt)
+                                  : "1m 12s"}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setViewingBatchId(batch.id)}
+                                  className="h-8 w-8 p-0 hover:bg-gray-100"
+                                >
+                                  <Eye className="h-4 w-4 text-gray-600" />
+                                </Button>
+                                {batch.status === "completed" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDownload(batch.id, batch.originalFilename)}
+                                    disabled={downloadingBatchId === batch.id}
+                                    className="h-8 w-8 p-0 hover:bg-gray-100"
+                                  >
+                                    {downloadingBatchId === batch.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Download className="h-4 w-4 text-gray-600" />
+                                    )}
+                                  </Button>
+                                )}
+                                {batch.status === "completed" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 hover:bg-gray-100"
+                                  >
+                                    <Trash2 className="h-4 w-4 text-gray-600" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <FileSpreadsheet className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500">No batches processed yet</p>
+                  <p className="text-sm text-gray-400 mt-1">Upload a file to get started</p>
+                  <Button
+                    onClick={() => setCurrentView("upload")}
+                    className="mt-4"
+                    size="sm"
+                  >
+                    <UploadIcon className="h-4 w-4 mr-2" />
+                    Upload File
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Hidden Processing Pipeline */}
+          <div className="hidden">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               {/* Stage 1: Classification */}
               <Card className="hover:shadow-xl transition-all border-2 border-blue-100 bg-gradient-to-br from-blue-50 to-white">

@@ -206,8 +206,9 @@
 
 /* Gradient text effect */
 .gradient-text {
-  @apply bg-gradient-to-r from-blue-500 to-blue-600;
+  @apply bg-gradient-to-r from-blue-600 to-purple-600;
   @apply bg-clip-text text-transparent;
+  @apply font-semibold;
 }
 
 /* Soft shadow for depth */
