@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ClassificationStats, BusinessCategory, ActivityItem } from "@/lib/types";
 
 export default function Dashboard() {
-  const { data: stats } = useQuery<ClassificationStats>({
+  const { data: stats, isLoading } = useQuery<ClassificationStats>({
     queryKey: ["/api/dashboard/stats"],
   });
 
@@ -25,7 +25,15 @@ export default function Dashboard() {
     <div className="flex-1 flex flex-col">
       <Header title="Dashboard" subtitle="Overview of classification activity" />
       <main className="flex-1 p-6 overflow-auto space-y-6">
-        {stats && <KpiCards stats={stats} />}
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-32 rounded-lg skeleton transition-smooth" />
+            ))}
+          </div>
+        ) : (
+          stats && <KpiCards stats={stats} />
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <ClassificationChart data={chartData} />
           <UploadWidget />
