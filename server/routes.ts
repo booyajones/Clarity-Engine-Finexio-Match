@@ -451,6 +451,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(classifications);
   }));
 
+  // Dashboard stats endpoint
+  app.get("/api/dashboard/stats", asyncHandler(async (req: Request, res: Response) => {
+    const userId = 1; // TODO: Get from auth
+    
+    // Get basic stats
+    const batches = await storage.getUserUploadBatches(userId);
+    const totalBatches = batches.length;
+    const completedBatches = batches.filter(b => b.status === 'completed').length;
+    const processingBatches = batches.filter(b => b.status === 'processing').length;
+    
+    // Calculate total records processed
+    const totalRecords = batches.reduce((sum, b) => sum + (b.totalRecords || 0), 0);
+    const processedRecords = batches.reduce((sum, b) => sum + (b.processedRecords || 0), 0);
+    
+    // Calculate match rate
+    const matchedRecords = batches.reduce((sum, b) => sum + (b.finexioMatchedCount || 0), 0);
+    const matchRate = processedRecords > 0 ? (matchedRecords / processedRecords) * 100 : 0;
+    
+    res.json({
+      totalBatches,
+      completedBatches,
+      processingBatches,
+      totalRecords,
+      processedRecords,
+      matchedRecords,
+      matchRate: Math.round(matchRate),
+      recentBatches: batches.slice(0, 5).map(b => ({
+        id: b.id,
+        name: b.filename,
+        status: b.status,
+        totalRecords: b.totalRecords,
+        processedRecords: b.processedRecords,
+        createdAt: b.createdAt
+      }))
+    });
+  }));
+
   // Apply error handlers
   // Don't use notFoundHandler here as it will catch frontend routes
   // app.use(notFoundHandler);
