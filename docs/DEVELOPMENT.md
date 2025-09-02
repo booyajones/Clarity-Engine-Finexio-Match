@@ -52,6 +52,9 @@ npm run dev
 - **State**: TanStack Query for server state
 - **Build**: Vite for fast development
 
+### Classifications Page Refresh
+The Classifications page no longer polls for updates every two seconds. Use the **Refresh** button in the page header or refocus the browser tab to fetch the latest batches and classifications.
+
 ### Backend Development  
 - **Runtime**: Node.js with Express
 - **Database**: Drizzle ORM with PostgreSQL

@@ -7,24 +7,36 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import type { PayeeClassification, UploadBatch } from "@/lib/types";
+import { Download, Search, Edit } from "lucide-react";
 
 export default function Classifications() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBatch, setSelectedBatch] = useState<string>("all");
   const [selectedType, setSelectedType] = useState<string>("all");
 
-  const { data: batches = [] } = useQuery<UploadBatch[]>({
+  const {
+    data: batches = [],
+    refetch: refetchBatches,
+  } = useQuery<UploadBatch[]>({
     queryKey: ["/api/upload/batches"],
-    // Poll every 2 seconds for real-time updates
-    refetchInterval: 2000,
+    refetchOnWindowFocus: true,
   });
 
-  const { data: classifications = [] } = useQuery<PayeeClassification[]>({
-    queryKey: selectedBatch === "all" 
-      ? ["/api/classifications"] 
+  const {
+    data: classifications = [],
+    refetch: refetchClassifications,
+  } = useQuery<PayeeClassification[]>({
+    queryKey: selectedBatch === "all"
+      ? ["/api/classifications"]
       : ["/api/classifications/batch", selectedBatch],
     enabled: selectedBatch !== "all" || batches.length > 0,
+    refetchOnWindowFocus: true,
   });
+
+  const handleRefresh = () => {
+    refetchBatches();
+    refetchClassifications();
+  };
 
   const filteredClassifications = classifications.filter(classification => {
     const matchesSearch = classification.cleanedName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -63,12 +75,16 @@ export default function Classifications() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <Header 
-        title="Classifications" 
+      <Header
+        title="Classifications"
         subtitle="View and manage all payee classifications"
       >
+        <Button variant="outline" onClick={handleRefresh}>
+          <i className="fas fa-sync-alt mr-2"></i>
+          Refresh
+        </Button>
         <Button className="bg-primary-500 hover:bg-primary-600 text-white">
-          <i className="fas fa-download mr-2"></i>
+          <Download className="w-4 h-4 mr-2" />
           Export All
         </Button>
       </Header>
@@ -120,11 +136,11 @@ export default function Classifications() {
             {/* Classifications Table */}
             {filteredClassifications.length === 0 ? (
               <div className="text-center py-12">
-                <i className="fas fa-search text-4xl text-gray-300 mb-4"></i>
+                <Search className="w-10 h-10 text-gray-300 mb-4" />
                 <p className="text-gray-500">No classifications found</p>
                 {searchTerm && (
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={() => setSearchTerm("")}
                     className="mt-2"
                   >
@@ -228,7 +244,7 @@ export default function Classifications() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <Button variant="outline" size="sm">
-                            <i className="fas fa-edit mr-1"></i>
+                            <Edit className="w-4 h-4 mr-1" />
                             Edit
                           </Button>
                         </td>
