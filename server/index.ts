@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
+import { log } from "./vite";
+import { setupFrontend } from "./frontend-server";
 import memoryMonitor from "./utils/memoryMonitor";
 
 const app = express();
@@ -81,12 +82,8 @@ app.use((req, res, next) => {
     // Register routes and start server
     const server = await registerRoutes(app);
     
-    // Setup Vite in development, static serving in production
-    if (app.get("env") === "development") {
-      await setupVite(app, server);
-    } else {
-      serveStatic(app);
-    }
+    // Setup frontend serving
+    setupFrontend(app);
 
     console.log('✅ Finexio Match server ready');
   } catch (error) {

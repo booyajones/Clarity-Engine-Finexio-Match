@@ -452,7 +452,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }));
 
   // Apply error handlers
-  app.use(notFoundHandler);
+  // Don't use notFoundHandler here as it will catch frontend routes
+  // app.use(notFoundHandler);
   app.use(errorHandler);
 
   const port = parseInt(process.env.PORT || "5000");

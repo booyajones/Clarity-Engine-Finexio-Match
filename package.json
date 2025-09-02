@@ -180,6 +180,7 @@
     "html-entities": "^2.6.0",
     "http-errors": "^2.0.0",
     "http-proxy-agent": "^5.0.0",
+    "http-proxy-middleware": "^3.0.5",
     "https-proxy-agent": "^7.0.6",
     "iconv-lite": "^0.4.24",
     "inherits": "^2.0.4",
