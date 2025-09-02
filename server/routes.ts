@@ -488,6 +488,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }));
 
+  // Smart cache management endpoints
+  app.get('/api/cache/stats', asyncHandler(async (req: Request, res: Response) => {
+    const { smartCache } = await import('./services/smartSupplierCache');
+    const stats = await smartCache.getCacheStats();
+    res.json(stats);
+  }));
+  
+  app.post('/api/cache/sync', asyncHandler(async (req: Request, res: Response) => {
+    const { smartCache } = await import('./services/smartSupplierCache');
+    const { source = 'bigquery' } = req.body;
+    
+    let count = 0;
+    if (source === 'bigquery') {
+      count = await smartCache.syncFromBigQuery();
+    } else if (source === 'comprehensive') {
+      count = await smartCache.loadComprehensiveData();
+    } else {
+      count = await smartCache.loadSampleData();
+    }
+    
+    res.json({ 
+      success: true, 
+      recordsSynced: count,
+      source: source
+    });
+  }));
+
   // Apply error handlers
   // Don't use notFoundHandler here as it will catch frontend routes
   // app.use(notFoundHandler);
