@@ -46,15 +46,16 @@ export class SmartSupplierCache {
   
   private initializeBigQuery() {
     try {
-      const projectId = process.env.BIGQUERY_PROJECT_ID;
+      // Use finexiopoc project for supplier data
+      const projectId = 'finexiopoc';
       const credentials = process.env.BIGQUERY_CREDENTIALS;
       
-      if (!projectId || !credentials) {
+      if (!credentials) {
         console.log('⚠️  SmartCache: BigQuery credentials not configured, using cached data only');
         return;
       }
       
-      // Try to connect to BigQuery
+      // Try to connect to BigQuery finexiopoc project
       this.bigquery = new BigQuery({
         projectId: projectId,
         credentials: JSON.parse(credentials),
@@ -72,17 +73,23 @@ export class SmartSupplierCache {
     if (!this.bigquery) return;
     
     try {
-      // Try configured project with proper table path
-      const projectId = process.env.BIGQUERY_PROJECT_ID || 'robust-helix-330220';
+      // Use finexiopoc project for supplier data
+      const projectId = 'finexiopoc';
+      // First check what columns exist in the table
       const testQuery = `
-        SELECT COUNT(*) as count 
+        SELECT * 
         FROM \`finexiopoc.SE_Enrichment.supplier\` 
         LIMIT 1
       `;
       
-      await this.bigquery.query({ query: testQuery });
+      const [rows] = await this.bigquery.query({ query: testQuery });
       this.isConnected = true;
       console.log(`✅ SmartCache: Connected to BigQuery (${projectId} project)`);
+      
+      // Log available columns for debugging
+      if (rows && rows.length > 0) {
+        console.log('📊 Available columns in SE_Enrichment.supplier:', Object.keys(rows[0]));
+      }
       
       // Start background sync
       this.startBackgroundSync();
@@ -120,18 +127,17 @@ export class SmartSupplierCache {
     console.log('🔄 SmartCache: Starting BigQuery sync...');
     
     try {
-      // Query the finexiopoc project directly
+      // Query the finexiopoc project with correct column names
       const query = `
         WITH distinct_suppliers AS (
           SELECT DISTINCT
-            CAST(id AS STRING) as payee_id,
-            name as payee_name,
-            payment_type_c as payment_type,
-            ROW_NUMBER() OVER (PARTITION BY LOWER(name) ORDER BY id) as rn
+            CAST(Reference_ID AS STRING) as payee_id,
+            Supplier_Name as payee_name,
+            Payment_Method as payment_type,
+            ROW_NUMBER() OVER (PARTITION BY LOWER(Supplier_Name) ORDER BY Reference_ID) as rn
           FROM \`finexiopoc.SE_Enrichment.supplier\`
-          WHERE COALESCE(is_deleted, false) = false
-            AND name IS NOT NULL
-            AND LENGTH(TRIM(name)) > 0
+          WHERE Supplier_Name IS NOT NULL
+            AND LENGTH(TRIM(Supplier_Name)) > 0
         )
         SELECT payee_id, payee_name, payment_type
         FROM distinct_suppliers
@@ -154,8 +160,8 @@ export class SmartSupplierCache {
       for (let i = 0; i < rows.length; i += this.BATCH_SIZE) {
         const batch = rows.slice(i, i + this.BATCH_SIZE);
         
-        const suppliers = batch.map(row => ({
-          payeeId: `BQ_${row.payee_id}_${Date.now()}`,
+        const suppliers = batch.map((row, index) => ({
+          payeeId: `BQ_${row.payee_id}_${Date.now()}_${i + index}`,
           payeeName: row.payee_name || '',
           normalizedName: (row.payee_name || '').toLowerCase().replace(/[^a-z0-9]/g, ''),
           paymentType: row.payment_type || 'CHECK',
