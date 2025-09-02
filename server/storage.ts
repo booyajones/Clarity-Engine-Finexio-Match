@@ -2,33 +2,21 @@ import {
   users, 
   uploadBatches, 
   payeeClassifications, 
-  sicCodes,
-  classificationRules,
-  exclusionKeywords,
-  exclusionLogs,
   payeeMatches,
-  mastercardSearchRequests,
-  type User, 
+  cachedSuppliers,
+  type SelectUser as User, 
   type InsertUser,
-  type UploadBatch,
+  type SelectUploadBatch as UploadBatch,
   type InsertUploadBatch,
-  type PayeeClassification,
+  type SelectPayeeClassification as PayeeClassification,
   type InsertPayeeClassification,
-  type SicCode,
-  type InsertSicCode,
-  type ClassificationRule,
-  type InsertClassificationRule,
-  type ExclusionKeyword,
-  type InsertExclusionKeyword,
-  type ExclusionLog,
-  type InsertExclusionLog,
-  type PayeeMatch,
+  type SelectPayeeMatch as PayeeMatch,
   type InsertPayeeMatch,
-  type MastercardSearchRequest,
-  type InsertMastercardSearchRequest
+  type SelectCachedSupplier as CachedSupplier,
+  type InsertCachedSupplier
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, lt, count, sql, inArray, or } from "drizzle-orm";
+import { eq, desc, and, count, sql } from "drizzle-orm";
 
 export interface IStorage {
   // User operations
@@ -50,8 +38,6 @@ export interface IStorage {
   getBatchClassifications(batchId: number, limit?: number, offset?: number): Promise<PayeeClassification[]>;
   getBatchClassificationCount(batchId: number): Promise<number>;
   getPendingReviewClassifications(limit?: number): Promise<PayeeClassification[]>;
-  updatePayeeClassificationWithMastercard(id: number, mastercardData: Partial<PayeeClassification>): Promise<PayeeClassification>;
-  getBusinessClassificationsForEnrichment(batchId: number, limit?: number): Promise<PayeeClassification[]>;
   getClassificationStats(): Promise<{
     totalPayees: number;
     accuracy: number;
@@ -59,35 +45,12 @@ export interface IStorage {
     filesProcessed: number;
   }>;
 
-  // SIC code operations
-  getSicCodes(): Promise<SicCode[]>;
-  createSicCode(sicCode: InsertSicCode): Promise<SicCode>;
-  findSicCodeByPattern(pattern: string): Promise<SicCode | undefined>;
-
   // Batch summary
   getBatchSummary(batchId: number): Promise<{
     total: number;
-    business: number;
-    individual: number;
-    government: number;
-    insurance: number;
-    banking: number;
-    internalTransfer: number;
-    unknown: number;
-    excluded: number;
-    duplicates: number;
+    matched: number;
+    unmatched: number;
   }>;
-
-  // Classification rules
-  getClassificationRules(): Promise<ClassificationRule[]>;
-  createClassificationRule(rule: InsertClassificationRule): Promise<ClassificationRule>;
-
-  // Exclusion keyword operations
-  getExclusionKeywords(): Promise<ExclusionKeyword[]>;
-  createExclusionKeyword(keyword: InsertExclusionKeyword): Promise<ExclusionKeyword>;
-  updateExclusionKeyword(id: number, updates: Partial<ExclusionKeyword>): Promise<ExclusionKeyword>;
-  deleteExclusionKeyword(id: number): Promise<void>;
-  createExclusionLog(log: InsertExclusionLog): Promise<ExclusionLog>;
 
   // Delete operations
   deleteUploadBatch(id: number): Promise<void>;
@@ -100,23 +63,16 @@ export interface IStorage {
   getClassificationMatches(classificationId: number): Promise<PayeeMatch[]>;
   getBatchMatches(batchId: number): Promise<PayeeMatch[]>;
   getPayeeClassificationsByBatch(batchId: number): Promise<PayeeClassification[]>;
-
-  // Akkio prediction operations
-  getClassificationsForAkkioPrediction(batchId: number): Promise<PayeeClassification[]>;
   
-  // Finexio matching operations
+  // Finexio/cached supplier operations
   checkFinexioSupplier(name: string): Promise<{id: string; name: string; confidence: number} | null>;
   updateClassificationFinexioMatch(classificationId: number, finexioData: {
     finexioSupplierId: string;
     finexioSupplierName: string;
     finexioConfidence: number;
   }): Promise<void>;
-  
-  // Mastercard search request operations
-  createMastercardSearchRequest(request: InsertMastercardSearchRequest): Promise<MastercardSearchRequest>;
-  getMastercardSearchRequest(searchId: string): Promise<MastercardSearchRequest | undefined>;
-  updateMastercardSearchRequest(searchId: string, updates: Partial<MastercardSearchRequest>): Promise<MastercardSearchRequest>;
-  getPendingMastercardSearches(): Promise<MastercardSearchRequest[]>;
+  getCachedSuppliers(): Promise<CachedSupplier[]>;
+  upsertCachedSupplier(supplier: InsertCachedSupplier): Promise<CachedSupplier>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -130,20 +86,14 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(insertUser)
-      .returning();
-    return user;
+  async createUser(user: InsertUser): Promise<User> {
+    const [newUser] = await db.insert(users).values(user).returning();
+    return newUser;
   }
 
   async createUploadBatch(batch: InsertUploadBatch): Promise<UploadBatch> {
-    const [uploadBatch] = await db
-      .insert(uploadBatches)
-      .values(batch)
-      .returning();
-    return uploadBatch;
+    const [newBatch] = await db.insert(uploadBatches).values(batch).returning();
+    return newBatch;
   }
 
   async getUploadBatch(id: number): Promise<UploadBatch | undefined> {
@@ -152,178 +102,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateUploadBatch(id: number, updates: Partial<UploadBatch>): Promise<UploadBatch> {
-    // Filter out undefined values and createdAt to avoid SQL errors
-    const cleanUpdates = Object.entries(updates).reduce((acc, [key, value]) => {
-      if (value !== undefined && key !== 'createdAt') {
-        acc[key] = value;
-      }
-      return acc;
-    }, {} as any);
-    
-    const [batch] = await db
-      .update(uploadBatches)
-      .set(cleanUpdates)
+    const [updatedBatch] = await db.update(uploadBatches)
+      .set(updates)
       .where(eq(uploadBatches.id, id))
       .returning();
-    return batch;
+    return updatedBatch;
   }
 
-  async getUserUploadBatches(userId: number): Promise<any[]> {
-    const batches = await db
-      .select()
+  async getUserUploadBatches(userId: number): Promise<UploadBatch[]> {
+    return await db.select()
       .from(uploadBatches)
       .where(eq(uploadBatches.userId, userId))
       .orderBy(desc(uploadBatches.createdAt));
-    
-    // Map batches to camelCase and calculate real-time progress
-    const mappedBatches = [];
-    for (const batch of batches) {
-      // Convert snake_case to camelCase for frontend compatibility
-      const mappedBatch: any = {
-        id: batch.id,
-        filename: batch.filename,
-        originalFilename: batch.originalFilename,
-        status: batch.status,
-        totalRecords: batch.totalRecords,
-        processedRecords: batch.processedRecords,
-        skippedRecords: batch.skippedRecords,
-        currentStep: batch.currentStep,
-        progressMessage: batch.progressMessage,
-        accuracy: batch.accuracy,
-        userId: batch.userId,
-        // Map enrichment status fields to camelCase
-        classificationStatus: batch.classificationStatus,
-        finexioMatchingStatus: batch.finexioMatchingStatus,
-        finexioMatchingProgress: batch.finexioMatchingProgress || 0,
-        finexioMatchPercentage: batch.finexioMatchPercentage || 0,
-        finexioMatchedCount: batch.finexioMatchedCount || 0,
-        googleAddressStatus: batch.googleAddressStatus,
-        googleAddressProgress: batch.googleAddressProgress || 0,
-        googleAddressValidated: batch.googleAddressValidated || 0,
-        mastercardEnrichmentStatus: batch.mastercardEnrichmentStatus,
-        mastercardEnrichmentProgress: batch.mastercardEnrichmentProgress || 0,
-        mastercardActualEnriched: batch.mastercardActualEnriched || 0,
-        akkioPredictionStatus: batch.akkioPredictionStatus,
-        akkioPredictionProgress: batch.akkioPredictionProgress || 0,
-        akkioPredictionSuccessful: batch.akkioPredictionSuccessful || 0,
-        createdAt: batch.createdAt,
-        completedAt: batch.completedAt
-      };
-      
-      // Only calculate detailed progress for actively processing batches
-      if (batch.processedRecords > 0 && batch.status === 'processing') {
-        // Get Finexio matching progress and results
-        // Count records that have been processed for Finexio (either matched or attempted)
-        const finexioResult = await db.execute(sql`
-          SELECT 
-            COUNT(CASE WHEN pc.finexio_confidence IS NOT NULL THEN 1 END) as processed_count,
-            COUNT(CASE WHEN pc.finexio_supplier_id IS NOT NULL THEN 1 END) as matched_count,
-            COUNT(*) as total_records
-          FROM payee_classifications pc
-          WHERE pc.batch_id = ${batch.id}
-        `);
-        
-        const matchedCount = parseInt(finexioResult.rows[0]?.matched_count || '0');
-        const finexioProcessed = parseInt(finexioResult.rows[0]?.processed_count || '0');
-        const totalRecords = parseInt(finexioResult.rows[0]?.total_records || '0');
-        
-        mappedBatch.finexioMatchedCount = matchedCount;
-        mappedBatch.finexioMatchPercentage = totalRecords > 0 ? Math.round((matchedCount / totalRecords) * 100) : 0;
-        mappedBatch.finexioMatchingProgress = finexioProcessed; // Actual records processed through Finexio
-        
-        // Get Google Address validation progress
-        const googleResult = await db.execute(sql`
-          SELECT 
-            COUNT(CASE WHEN google_address_validation_status IS NOT NULL THEN 1 END) as validated_count,
-            COUNT(CASE WHEN google_formatted_address IS NOT NULL THEN 1 END) as formatted_count
-          FROM payee_classifications
-          WHERE batch_id = ${batch.id}
-        `);
-        
-        const googleValidated = parseInt(googleResult.rows[0]?.validated_count || '0');
-        mappedBatch.googleAddressValidated = googleValidated;
-        mappedBatch.googleAddressProgress = googleValidated; // Progress is same as validated count
-        
-        // Get actual Mastercard enrichment progress
-        const mastercardResult = await db.execute(sql`
-          SELECT 
-            COUNT(CASE WHEN mastercard_match_status = 'match' THEN 1 END) as matched_count,
-            COUNT(CASE WHEN mastercard_match_status IS NOT NULL THEN 1 END) as processed_count,
-            COUNT(CASE WHEN mastercard_business_name IS NOT NULL AND mastercard_business_name != 'None' THEN 1 END) as enriched_count
-          FROM payee_classifications
-          WHERE batch_id = ${batch.id}
-        `);
-        
-        const mcMatchedCount = parseInt(mastercardResult.rows[0]?.matched_count || '0');
-        const mcProcessedCount = parseInt(mastercardResult.rows[0]?.processed_count || '0');
-        const mcEnrichedCount = parseInt(mastercardResult.rows[0]?.enriched_count || '0');
-        
-        mappedBatch.mastercardActualEnriched = mcEnrichedCount;
-        mappedBatch.mastercardEnrichmentProcessed = mcProcessedCount;
-        mappedBatch.mastercardEnrichmentProgress = mcProcessedCount; // Track actual processing progress
-        mappedBatch.mastercardEnrichmentTotal = batch.processedRecords;
-        
-        // Get Akkio prediction progress
-        const akkioResult = await db.execute(sql`
-          SELECT 
-            COUNT(CASE WHEN akkio_prediction_status = 'completed' THEN 1 END) as predicted_count,
-            COUNT(CASE WHEN akkio_prediction_status IS NOT NULL THEN 1 END) as processed_count
-          FROM payee_classifications
-          WHERE batch_id = ${batch.id}
-        `);
-        
-        const akkioPredicted = parseInt(akkioResult.rows[0]?.predicted_count || '0');
-        const akkioProcessed = parseInt(akkioResult.rows[0]?.processed_count || '0');
-        mappedBatch.akkioPredictionSuccessful = akkioPredicted;
-        mappedBatch.akkioPredictionProgress = akkioProcessed;
-      }
-      
-      mappedBatches.push(mappedBatch);
-    }
-    
-    return mappedBatches;
   }
 
   async createPayeeClassification(classification: InsertPayeeClassification): Promise<PayeeClassification> {
-    // Import state validator
-    const { validateAndCorrectState } = await import('./utils/stateValidator');
-    
-    // Validate and correct the state before saving
-    if (classification.state) {
-      const correctedState = validateAndCorrectState(classification.state, classification.city);
-      if (correctedState !== classification.state) {
-        console.log(`📍 Auto-corrected state: "${classification.state}" → "${correctedState}"`);
-      }
-      classification.state = correctedState;
-    }
-    
-    const [payeeClassification] = await db
-      .insert(payeeClassifications)
-      .values(classification)
-      .returning();
-    return payeeClassification;
+    const [newClassification] = await db.insert(payeeClassifications).values(classification).returning();
+    return newClassification;
   }
 
   async createPayeeClassifications(classifications: InsertPayeeClassification[]): Promise<PayeeClassification[]> {
-    // Import state validator
-    const { validateAndCorrectState } = await import('./utils/stateValidator');
-    
-    // Validate and correct states before saving
-    const correctedClassifications = classifications.map(classification => {
-      if (classification.state) {
-        const correctedState = validateAndCorrectState(classification.state, classification.city);
-        if (correctedState !== classification.state) {
-          console.log(`📍 Auto-corrected state: "${classification.state}" → "${correctedState}"`);
-        }
-        return { ...classification, state: correctedState };
-      }
-      return classification;
-    });
-    
-    return await db
-      .insert(payeeClassifications)
-      .values(correctedClassifications)
-      .returning();
+    if (classifications.length === 0) return [];
+    return await db.insert(payeeClassifications).values(classifications).returning();
   }
 
   async getPayeeClassification(id: number): Promise<PayeeClassification | undefined> {
@@ -332,63 +132,37 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updatePayeeClassification(id: number, updates: Partial<PayeeClassification>): Promise<PayeeClassification> {
-    // Import state validator
-    const { validateAndCorrectState } = await import('./utils/stateValidator');
-    
-    // Validate and correct the state if it's being updated
-    if (updates.state) {
-      const correctedState = validateAndCorrectState(updates.state, updates.city);
-      if (correctedState !== updates.state) {
-        console.log(`📍 Auto-corrected state during update: "${updates.state}" → "${correctedState}"`);
-      }
-      updates.state = correctedState;
-    }
-    
-    const [classification] = await db
-      .update(payeeClassifications)
+    const [updatedClassification] = await db.update(payeeClassifications)
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(payeeClassifications.id, id))
       .returning();
-    return classification;
+    return updatedClassification;
   }
 
   async getBatchClassifications(batchId: number, limit?: number, offset?: number): Promise<PayeeClassification[]> {
-    const baseQuery = db
-      .select()
+    let query = db.select()
       .from(payeeClassifications)
       .where(eq(payeeClassifications.batchId, batchId))
       .orderBy(desc(payeeClassifications.createdAt));
     
-    // Apply limit and offset if provided
-    if (limit !== undefined && offset !== undefined) {
-      return await baseQuery.limit(limit).offset(offset);
-    } else if (limit !== undefined) {
-      return await baseQuery.limit(limit);
-    } else if (offset !== undefined) {
-      return await baseQuery.offset(offset);
-    }
+    if (limit) query = query.limit(limit);
+    if (offset) query = query.offset(offset);
     
-    return await baseQuery;
+    return await query;
   }
 
   async getBatchClassificationCount(batchId: number): Promise<number> {
-    const result = await db
-      .select({ count: count() })
+    const [result] = await db.select({ count: count() })
       .from(payeeClassifications)
       .where(eq(payeeClassifications.batchId, batchId));
-    
-    return result[0]?.count || 0;
+    return result?.count || 0;
   }
 
-  async getPendingReviewClassifications(limit = 50): Promise<PayeeClassification[]> {
-    return await db
-      .select()
+  async getPendingReviewClassifications(limit: number = 50): Promise<PayeeClassification[]> {
+    return await db.select()
       .from(payeeClassifications)
-      .where(and(
-        eq(payeeClassifications.status, "pending-review"),
-        lt(payeeClassifications.confidence, 0.95)
-      ))
-      .orderBy(payeeClassifications.confidence)
+      .where(eq(payeeClassifications.status, 'pending-review'))
+      .orderBy(desc(payeeClassifications.createdAt))
       .limit(limit);
   }
 
@@ -398,189 +172,40 @@ export class DatabaseStorage implements IStorage {
     pendingReview: number;
     filesProcessed: number;
   }> {
-    const [totalPayeesResult] = await db
-      .select({ count: count() })
-      .from(payeeClassifications);
-
-    const [pendingReviewResult] = await db
-      .select({ count: count() })
+    const [totalResult] = await db.select({ count: count() }).from(payeeClassifications);
+    const [pendingResult] = await db.select({ count: count() })
       .from(payeeClassifications)
-      .where(eq(payeeClassifications.status, "pending-review"));
+      .where(eq(payeeClassifications.status, 'pending-review'));
+    const [filesResult] = await db.select({ count: count() }).from(uploadBatches);
+    const [matchedResult] = await db.select({ count: count() })
+      .from(payeeClassifications)
+      .where(sql`${payeeClassifications.finexioSupplierId} IS NOT NULL`);
 
-    const [filesProcessedResult] = await db
-      .select({ count: count() })
-      .from(uploadBatches)
-      .where(eq(uploadBatches.status, "completed"));
-
-    const [accuracyResult] = await db
-      .select({ 
-        avgAccuracy: sql<number>`AVG(${payeeClassifications.confidence})` 
-      })
-      .from(payeeClassifications);
+    const total = totalResult?.count || 0;
+    const matched = matchedResult?.count || 0;
+    const accuracy = total > 0 ? (matched / total) * 100 : 0;
 
     return {
-      totalPayees: totalPayeesResult.count,
-      accuracy: Number((accuracyResult.avgAccuracy || 0) * 100),
-      pendingReview: pendingReviewResult.count,
-      filesProcessed: filesProcessedResult.count,
+      totalPayees: total,
+      accuracy: Math.round(accuracy),
+      pendingReview: pendingResult?.count || 0,
+      filesProcessed: filesResult?.count || 0,
     };
-  }
-
-  async getSicCodes(): Promise<SicCode[]> {
-    return await db.select().from(sicCodes);
-  }
-
-  async createSicCode(sicCode: InsertSicCode): Promise<SicCode> {
-    const [code] = await db
-      .insert(sicCodes)
-      .values(sicCode)
-      .returning();
-    return code;
-  }
-
-  async findSicCodeByPattern(pattern: string): Promise<SicCode | undefined> {
-    const [code] = await db
-      .select()
-      .from(sicCodes)
-      .where(sql`${sicCodes.description} ILIKE ${'%' + pattern + '%'}`)
-      .limit(1);
-    return code || undefined;
   }
 
   async getBatchSummary(batchId: number): Promise<{
     total: number;
-    business: number;
-    individual: number;
-    government: number;
-    insurance: number;
-    banking: number;
-    internalTransfer: number;
-    unknown: number;
-    excluded: number;
-    duplicates: number;
+    matched: number;
+    unmatched: number;
   }> {
-    const result = await db
-      .select({
-        payeeType: payeeClassifications.payeeType,
-        isExcluded: payeeClassifications.isExcluded,
-        count: sql<number>`COUNT(*)`
-      })
-      .from(payeeClassifications)
-      .where(eq(payeeClassifications.batchId, batchId))
-      .groupBy(payeeClassifications.payeeType, payeeClassifications.isExcluded);
-
-    const summary = {
-      total: 0,
-      business: 0,
-      individual: 0,
-      government: 0,
-      insurance: 0,
-      banking: 0,
-      internalTransfer: 0,
-      unknown: 0,
-      excluded: 0,
-      duplicates: 0
-    };
-
-    result.forEach(row => {
-      const count = Number(row.count);
-      summary.total += count;
-      
-      // Count excluded records separately
-      if (row.isExcluded) {
-        summary.excluded += count;
-      }
-      
-      // Always count by type, regardless of exclusion status
-      const type = row.payeeType;
-      switch(type) {
-        case 'Business':
-          summary.business += count;
-          break;
-        case 'Individual':
-          summary.individual += count;
-          break;
-        case 'Government':
-          summary.government += count;
-          break;
-        case 'Insurance':
-          summary.insurance += count;
-          break;
-        case 'Banking':
-          summary.banking += count;
-          break;
-        case 'Internal Transfer':
-          summary.internalTransfer += count;
-          break;
-        case 'Unknown':
-          summary.unknown += count;
-          break;
-      }
-    });
-
-    // Count duplicates separately
-    const [duplicateResult] = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(payeeClassifications)
-      .where(and(
-        eq(payeeClassifications.batchId, batchId),
-        sql`${payeeClassifications.reasoning} LIKE '%duplicate_id%'`
-      ));
+    const classifications = await this.getBatchClassifications(batchId);
+    const matched = classifications.filter(c => c.finexioSupplierId).length;
     
-    summary.duplicates = Number(duplicateResult?.count || 0);
-
-    return summary;
-  }
-
-  async getClassificationRules(): Promise<ClassificationRule[]> {
-    return await db
-      .select()
-      .from(classificationRules)
-      .where(eq(classificationRules.isActive, true));
-  }
-
-  async createClassificationRule(rule: InsertClassificationRule): Promise<ClassificationRule> {
-    const [classificationRule] = await db
-      .insert(classificationRules)
-      .values(rule)
-      .returning();
-    return classificationRule;
-  }
-
-  async getExclusionKeywords(): Promise<ExclusionKeyword[]> {
-    return await db
-      .select()
-      .from(exclusionKeywords)
-      .orderBy(exclusionKeywords.createdAt);
-  }
-
-  async createExclusionKeyword(keyword: InsertExclusionKeyword): Promise<ExclusionKeyword> {
-    const [exclusionKeyword] = await db
-      .insert(exclusionKeywords)
-      .values(keyword)
-      .returning();
-    return exclusionKeyword;
-  }
-
-  async updateExclusionKeyword(id: number, updates: Partial<ExclusionKeyword>): Promise<ExclusionKeyword> {
-    const [exclusionKeyword] = await db
-      .update(exclusionKeywords)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(exclusionKeywords.id, id))
-      .returning();
-    return exclusionKeyword;
-  }
-
-  async deleteExclusionKeyword(id: number): Promise<void> {
-    await db.delete(exclusionKeywords).where(eq(exclusionKeywords.id, id));
-  }
-
-  async createExclusionLog(log: InsertExclusionLog): Promise<ExclusionLog> {
-    const [exclusionLog] = await db
-      .insert(exclusionLogs)
-      .values(log)
-      .returning();
-    return exclusionLog;
+    return {
+      total: classifications.length,
+      matched,
+      unmatched: classifications.length - matched
+    };
   }
 
   async deleteUploadBatch(id: number): Promise<void> {
@@ -591,195 +216,64 @@ export class DatabaseStorage implements IStorage {
     await db.delete(payeeClassifications).where(eq(payeeClassifications.batchId, batchId));
   }
 
-  async updatePayeeClassificationWithMastercard(id: number, mastercardData: Partial<PayeeClassification>): Promise<PayeeClassification> {
-    const [updated] = await db
-      .update(payeeClassifications)
-      .set({
-        ...mastercardData,
-        mastercardEnrichmentDate: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(payeeClassifications.id, id))
-      .returning();
-    return updated;
-  }
-
-  async getBusinessClassificationsForEnrichment(batchId: number, limit = 1000): Promise<PayeeClassification[]> {
-    return await db
-      .select()
-      .from(payeeClassifications)
-      .where(and(
-        eq(payeeClassifications.batchId, batchId),
-        eq(payeeClassifications.payeeType, 'Business'),
-        or(
-          sql`${payeeClassifications.mastercardMatchStatus} IS NULL`,
-          eq(payeeClassifications.mastercardMatchStatus, 'error') // Also include error records for retry
-        )
-      ))
-      .limit(limit);
-  }
-
-  async updatePayeeClassificationEnrichmentStatus(
-    id: number,
-    data: {
-      enrichmentStatus?: string;
-      enrichmentStartedAt?: Date;
-      enrichmentCompletedAt?: Date;
-      enrichmentError?: string;
-    }
-  ): Promise<void> {
-    await db
-      .update(payeeClassifications)
-      .set({
-        ...data,
-        updatedAt: new Date(),
-      })
-      .where(eq(payeeClassifications.id, id));
-  }
-  
-  // Payee matching implementations
   async createPayeeMatch(match: InsertPayeeMatch): Promise<PayeeMatch> {
-    const [payeeMatch] = await db
-      .insert(payeeMatches)
-      .values(match)
-      .returning();
-    return payeeMatch;
+    const [newMatch] = await db.insert(payeeMatches).values(match).returning();
+    return newMatch;
   }
-  
+
   async getPayeeMatch(id: number): Promise<PayeeMatch | undefined> {
-    const [match] = await db
-      .select()
-      .from(payeeMatches)
-      .where(eq(payeeMatches.id, id));
+    const [match] = await db.select().from(payeeMatches).where(eq(payeeMatches.id, id));
     return match || undefined;
   }
-  
+
   async updatePayeeMatch(id: number, updates: Partial<PayeeMatch>): Promise<PayeeMatch> {
-    const [updated] = await db
-      .update(payeeMatches)
-      .set({
-        ...updates,
-        updatedAt: new Date(),
-      })
+    const [updatedMatch] = await db.update(payeeMatches)
+      .set({ ...updates, updatedAt: new Date() })
       .where(eq(payeeMatches.id, id))
       .returning();
-    return updated;
+    return updatedMatch;
   }
-  
+
   async getClassificationMatches(classificationId: number): Promise<PayeeMatch[]> {
-    return await db
-      .select()
+    return await db.select()
       .from(payeeMatches)
       .where(eq(payeeMatches.classificationId, classificationId))
       .orderBy(desc(payeeMatches.matchConfidence));
   }
-  
-  async getMatchesForClassifications(classificationIds: number[]): Promise<PayeeMatch[]> {
+
+  async getBatchMatches(batchId: number): Promise<PayeeMatch[]> {
+    const classifications = await this.getBatchClassifications(batchId);
+    const classificationIds = classifications.map(c => c.id);
     if (classificationIds.length === 0) return [];
     
-    return await db
-      .select()
+    return await db.select()
       .from(payeeMatches)
-      .where(inArray(payeeMatches.classificationId, classificationIds))
-      .orderBy(desc(payeeMatches.matchConfidence));
+      .where(sql`${payeeMatches.classificationId} = ANY(${classificationIds})`);
   }
-  
-  async getBatchMatches(batchId: number): Promise<PayeeMatch[]> {
-    const results = await db
-      .select()
-      .from(payeeMatches)
-      .innerJoin(
-        payeeClassifications,
-        eq(payeeMatches.classificationId, payeeClassifications.id)
-      )
-      .where(eq(payeeClassifications.batchId, batchId))
-      .orderBy(desc(payeeMatches.matchConfidence));
-    
-    return results.map(r => r.payee_matches);
-  }
-  
+
   async getPayeeClassificationsByBatch(batchId: number): Promise<PayeeClassification[]> {
-    return await db
-      .select()
+    return await db.select()
       .from(payeeClassifications)
       .where(eq(payeeClassifications.batchId, batchId));
   }
 
-  // Get classifications ready for Akkio prediction (enriched but not yet predicted)
-  async getClassificationsForAkkioPrediction(batchId: number): Promise<PayeeClassification[]> {
-    return await db
-      .select()
-      .from(payeeClassifications)
-      .where(
-        and(
-          eq(payeeClassifications.batchId, batchId),
-          sql`${payeeClassifications.akkioPredictionStatus} IS NULL OR ${payeeClassifications.akkioPredictionStatus} = 'pending'`
-        )
-      )
-      .orderBy(payeeClassifications.id);
-  }
-
-  // Mastercard search request operations
-  async createMastercardSearchRequest(request: InsertMastercardSearchRequest): Promise<MastercardSearchRequest> {
-    const [searchRequest] = await db
-      .insert(mastercardSearchRequests)
-      .values(request)
-      .returning();
-    return searchRequest;
-  }
-
-  async getMastercardSearchRequest(searchId: string): Promise<MastercardSearchRequest | undefined> {
-    const [searchRequest] = await db
-      .select()
-      .from(mastercardSearchRequests)
-      .where(eq(mastercardSearchRequests.searchId, searchId));
-    return searchRequest || undefined;
-  }
-
-  async updateMastercardSearchRequest(searchId: string, updates: Partial<MastercardSearchRequest>): Promise<MastercardSearchRequest> {
-    const [searchRequest] = await db
-      .update(mastercardSearchRequests)
-      .set(updates)
-      .where(eq(mastercardSearchRequests.searchId, searchId))
-      .returning();
-    return searchRequest;
-  }
-
-  async getPendingMastercardSearches(): Promise<MastercardSearchRequest[]> {
-    return await db
-      .select()
-      .from(mastercardSearchRequests)
-      .where(eq(mastercardSearchRequests.status, 'pending'))
-      .orderBy(mastercardSearchRequests.createdAt);
-  }
-
-  // Finexio matching operations
   async checkFinexioSupplier(name: string): Promise<{id: string; name: string; confidence: number} | null> {
-    try {
-      // Query the cached_suppliers table for a match
-      const normalizedName = name.toLowerCase().trim();
-      const result = await db.execute(sql`
-        SELECT payee_id, payee_name, confidence
-        FROM cached_suppliers 
-        WHERE LOWER(payee_name) = ${normalizedName}
-        OR normalized_name = ${normalizedName}
-        LIMIT 1
-      `);
-      
-      if (result.rows && result.rows.length > 0) {
-        const row = result.rows[0];
-        return {
-          id: String(row.payee_id),
-          name: String(row.payee_name),
-          confidence: parseFloat(row.confidence) || 1.0
-        };
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Error checking Finexio supplier:', error);
-      return null;
+    // Check cached suppliers for a match
+    const normalizedName = name.toLowerCase().trim();
+    const [supplier] = await db.select()
+      .from(cachedSuppliers)
+      .where(sql`LOWER(${cachedSuppliers.payeeName}) = ${normalizedName}`)
+      .limit(1);
+    
+    if (supplier) {
+      return {
+        id: supplier.payeeId,
+        name: supplier.payeeName,
+        confidence: supplier.confidence || 0.8
+      };
     }
+    
+    return null;
   }
 
   async updateClassificationFinexioMatch(classificationId: number, finexioData: {
@@ -787,84 +281,313 @@ export class DatabaseStorage implements IStorage {
     finexioSupplierName: string;
     finexioConfidence: number;
   }): Promise<void> {
-    try {
-      // Update the payeeClassifications table with Finexio match data
-      await db
-        .update(payeeClassifications)
-        .set({
-          finexioSupplierId: finexioData.finexioSupplierId,
-          finexioSupplierName: finexioData.finexioSupplierName,
-          finexioConfidence: finexioData.finexioConfidence,
-          updatedAt: new Date()
-        })
-        .where(eq(payeeClassifications.id, classificationId));
-      
-      // Also create a payee_matches record for tracking (optional)
-      await db.insert(payeeMatches).values({
-        classificationId: classificationId,
-        bigQueryPayeeId: finexioData.finexioSupplierId,
-        bigQueryPayeeName: finexioData.finexioSupplierName,
-        matchConfidence: finexioData.finexioConfidence,
-        finexioMatchScore: finexioData.finexioConfidence * 100, // Convert to percentage
-        matchType: 'deterministic',
-        matchReasoning: 'Matched from Finexio supplier network',
-        isConfirmed: true
-      });
-    } catch (error) {
-      console.error('Error updating Finexio match record:', error);
-    }
+    await db.update(payeeClassifications)
+      .set({
+        finexioSupplierId: finexioData.finexioSupplierId,
+        finexioSupplierName: finexioData.finexioSupplierName,
+        finexioConfidence: finexioData.finexioConfidence,
+        updatedAt: new Date()
+      })
+      .where(eq(payeeClassifications.id, classificationId));
   }
 
-  async getAllCachedSuppliers(): Promise<any[]> {
-    try {
-      // Get all cached suppliers for sophisticated matching
-      const result = await db.execute(sql`
-        SELECT payee_id, payee_name, normalized_name, confidence 
-        FROM cached_suppliers
-        ORDER BY payee_name
-      `);
-      
-      return result.rows || [];
-    } catch (error) {
-      console.error('Error getting all cached suppliers:', error);
-      return [];
-    }
+  async getCachedSuppliers(): Promise<CachedSupplier[]> {
+    return await db.select().from(cachedSuppliers);
   }
 
-  async getFinexioSuppliersByPrefix(prefix: string): Promise<any[]> {
-    try {
-      // Get suppliers matching the prefix for efficient fuzzy matching
-      const searchPattern = prefix.toLowerCase() + '%';
-      const result = await db.execute(sql`
-        SELECT payee_id, payee_name, normalized_name, confidence 
-        FROM cached_suppliers
-        WHERE LOWER(payee_name) LIKE ${searchPattern}
-        OR normalized_name LIKE ${searchPattern}
-        LIMIT 1000
-      `);
-      
-      return result.rows || [];
-    } catch (error) {
-      console.error('Error getting suppliers by prefix:', error);
-      return [];
-    }
-  }
+  async upsertCachedSupplier(supplier: InsertCachedSupplier): Promise<CachedSupplier> {
+    const existing = await db.select()
+      .from(cachedSuppliers)
+      .where(eq(cachedSuppliers.payeeId, supplier.payeeId))
+      .limit(1);
 
-  async getBatchAccuracy(batchId: number): Promise<number> {
-    try {
-      // Calculate accuracy using SQL aggregation (memory efficient)
-      const result = await db.execute(sql`
-        SELECT AVG(confidence)::float AS accuracy
-        FROM ${payeeClassifications}
-        WHERE batch_id = ${batchId}
-      `);
-      
-      return result.rows[0]?.accuracy || 0;
-    } catch (error) {
-      console.error('Error calculating batch accuracy:', error);
-      return 0;
+    if (existing.length > 0) {
+      const [updated] = await db.update(cachedSuppliers)
+        .set({ ...supplier, lastUpdated: new Date() })
+        .where(eq(cachedSuppliers.payeeId, supplier.payeeId))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(cachedSuppliers)
+        .values(supplier)
+        .returning();
+      return created;
     }
   }
 }
 
-export const storage = new DatabaseStorage();
+// Memory storage implementation for development/testing
+export class MemStorage implements IStorage {
+  private users: User[] = [];
+  private uploadBatches: UploadBatch[] = [];
+  private payeeClassifications: PayeeClassification[] = [];
+  private payeeMatches: PayeeMatch[] = [];
+  private cachedSuppliers: CachedSupplier[] = [];
+  private nextId = 1;
+
+  async getUser(id: number): Promise<User | undefined> {
+    return this.users.find(u => u.id === id);
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    return this.users.find(u => u.username === username);
+  }
+
+  async createUser(user: InsertUser): Promise<User> {
+    const newUser: User = {
+      ...user,
+      id: this.nextId++,
+      createdAt: new Date()
+    };
+    this.users.push(newUser);
+    return newUser;
+  }
+
+  async createUploadBatch(batch: InsertUploadBatch): Promise<UploadBatch> {
+    const newBatch: UploadBatch = {
+      ...batch,
+      id: this.nextId++,
+      status: batch.status || 'processing',
+      totalRecords: batch.totalRecords || 0,
+      processedRecords: batch.processedRecords || 0,
+      skippedRecords: batch.skippedRecords || 0,
+      currentStep: batch.currentStep || null,
+      progressMessage: batch.progressMessage || null,
+      accuracy: batch.accuracy || 0,
+      finexioMatchingStatus: batch.finexioMatchingStatus || 'pending',
+      finexioMatchingStartedAt: batch.finexioMatchingStartedAt || null,
+      finexioMatchingCompletedAt: batch.finexioMatchingCompletedAt || null,
+      finexioMatchPercentage: batch.finexioMatchPercentage || 0,
+      finexioMatchedCount: batch.finexioMatchedCount || 0,
+      finexioMatchingProcessed: batch.finexioMatchingProcessed || 0,
+      finexioMatchingMatched: batch.finexioMatchingMatched || 0,
+      finexioMatchingProgress: batch.finexioMatchingProgress || 0,
+      createdAt: new Date(),
+      completedAt: batch.completedAt || null
+    };
+    this.uploadBatches.push(newBatch);
+    return newBatch;
+  }
+
+  async getUploadBatch(id: number): Promise<UploadBatch | undefined> {
+    return this.uploadBatches.find(b => b.id === id);
+  }
+
+  async updateUploadBatch(id: number, updates: Partial<UploadBatch>): Promise<UploadBatch> {
+    const batch = this.uploadBatches.find(b => b.id === id);
+    if (!batch) throw new Error('Batch not found');
+    Object.assign(batch, updates);
+    return batch;
+  }
+
+  async getUserUploadBatches(userId: number): Promise<UploadBatch[]> {
+    return this.uploadBatches
+      .filter(b => b.userId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async createPayeeClassification(classification: InsertPayeeClassification): Promise<PayeeClassification> {
+    const newClassification: PayeeClassification = {
+      ...classification,
+      id: this.nextId++,
+      payeeType: classification.payeeType || 'Business',
+      status: classification.status || 'auto-classified',
+      reviewedBy: classification.reviewedBy || null,
+      originalData: classification.originalData || null,
+      finexioSupplierId: classification.finexioSupplierId || null,
+      finexioSupplierName: classification.finexioSupplierName || null,
+      finexioConfidence: classification.finexioConfidence || null,
+      finexioMatchReasoning: classification.finexioMatchReasoning || null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.payeeClassifications.push(newClassification);
+    return newClassification;
+  }
+
+  async createPayeeClassifications(classifications: InsertPayeeClassification[]): Promise<PayeeClassification[]> {
+    const created: PayeeClassification[] = [];
+    for (const c of classifications) {
+      created.push(await this.createPayeeClassification(c));
+    }
+    return created;
+  }
+
+  async getPayeeClassification(id: number): Promise<PayeeClassification | undefined> {
+    return this.payeeClassifications.find(c => c.id === id);
+  }
+
+  async updatePayeeClassification(id: number, updates: Partial<PayeeClassification>): Promise<PayeeClassification> {
+    const classification = this.payeeClassifications.find(c => c.id === id);
+    if (!classification) throw new Error('Classification not found');
+    Object.assign(classification, { ...updates, updatedAt: new Date() });
+    return classification;
+  }
+
+  async getBatchClassifications(batchId: number, limit?: number, offset?: number): Promise<PayeeClassification[]> {
+    let classifications = this.payeeClassifications.filter(c => c.batchId === batchId);
+    if (offset) classifications = classifications.slice(offset);
+    if (limit) classifications = classifications.slice(0, limit);
+    return classifications;
+  }
+
+  async getBatchClassificationCount(batchId: number): Promise<number> {
+    return this.payeeClassifications.filter(c => c.batchId === batchId).length;
+  }
+
+  async getPendingReviewClassifications(limit: number = 50): Promise<PayeeClassification[]> {
+    return this.payeeClassifications
+      .filter(c => c.status === 'pending-review')
+      .slice(0, limit);
+  }
+
+  async getClassificationStats(): Promise<{
+    totalPayees: number;
+    accuracy: number;
+    pendingReview: number;
+    filesProcessed: number;
+  }> {
+    const total = this.payeeClassifications.length;
+    const matched = this.payeeClassifications.filter(c => c.finexioSupplierId).length;
+    const accuracy = total > 0 ? (matched / total) * 100 : 0;
+    const pendingReview = this.payeeClassifications.filter(c => c.status === 'pending-review').length;
+    const filesProcessed = this.uploadBatches.length;
+
+    return {
+      totalPayees: total,
+      accuracy: Math.round(accuracy),
+      pendingReview,
+      filesProcessed
+    };
+  }
+
+  async getBatchSummary(batchId: number): Promise<{
+    total: number;
+    matched: number;
+    unmatched: number;
+  }> {
+    const classifications = this.payeeClassifications.filter(c => c.batchId === batchId);
+    const matched = classifications.filter(c => c.finexioSupplierId).length;
+    
+    return {
+      total: classifications.length,
+      matched,
+      unmatched: classifications.length - matched
+    };
+  }
+
+  async deleteUploadBatch(id: number): Promise<void> {
+    const index = this.uploadBatches.findIndex(b => b.id === id);
+    if (index !== -1) this.uploadBatches.splice(index, 1);
+  }
+
+  async deleteBatchClassifications(batchId: number): Promise<void> {
+    this.payeeClassifications = this.payeeClassifications.filter(c => c.batchId !== batchId);
+  }
+
+  async createPayeeMatch(match: InsertPayeeMatch): Promise<PayeeMatch> {
+    const newMatch: PayeeMatch = {
+      ...match,
+      id: this.nextId++,
+      isConfirmed: match.isConfirmed || false,
+      confirmedBy: match.confirmedBy || null,
+      confirmedAt: match.confirmedAt || null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.payeeMatches.push(newMatch);
+    return newMatch;
+  }
+
+  async getPayeeMatch(id: number): Promise<PayeeMatch | undefined> {
+    return this.payeeMatches.find(m => m.id === id);
+  }
+
+  async updatePayeeMatch(id: number, updates: Partial<PayeeMatch>): Promise<PayeeMatch> {
+    const match = this.payeeMatches.find(m => m.id === id);
+    if (!match) throw new Error('Match not found');
+    Object.assign(match, { ...updates, updatedAt: new Date() });
+    return match;
+  }
+
+  async getClassificationMatches(classificationId: number): Promise<PayeeMatch[]> {
+    return this.payeeMatches.filter(m => m.classificationId === classificationId);
+  }
+
+  async getBatchMatches(batchId: number): Promise<PayeeMatch[]> {
+    const classificationIds = this.payeeClassifications
+      .filter(c => c.batchId === batchId)
+      .map(c => c.id);
+    return this.payeeMatches.filter(m => classificationIds.includes(m.classificationId));
+  }
+
+  async getPayeeClassificationsByBatch(batchId: number): Promise<PayeeClassification[]> {
+    return this.payeeClassifications.filter(c => c.batchId === batchId);
+  }
+
+  async checkFinexioSupplier(name: string): Promise<{id: string; name: string; confidence: number} | null> {
+    const normalizedName = name.toLowerCase().trim();
+    const supplier = this.cachedSuppliers.find(s => 
+      s.payeeName.toLowerCase().trim() === normalizedName
+    );
+    
+    if (supplier) {
+      return {
+        id: supplier.payeeId,
+        name: supplier.payeeName,
+        confidence: supplier.confidence || 0.8
+      };
+    }
+    
+    return null;
+  }
+
+  async updateClassificationFinexioMatch(classificationId: number, finexioData: {
+    finexioSupplierId: string;
+    finexioSupplierName: string;
+    finexioConfidence: number;
+  }): Promise<void> {
+    const classification = this.payeeClassifications.find(c => c.id === classificationId);
+    if (classification) {
+      classification.finexioSupplierId = finexioData.finexioSupplierId;
+      classification.finexioSupplierName = finexioData.finexioSupplierName;
+      classification.finexioConfidence = finexioData.finexioConfidence;
+      classification.updatedAt = new Date();
+    }
+  }
+
+  async getCachedSuppliers(): Promise<CachedSupplier[]> {
+    return this.cachedSuppliers;
+  }
+
+  async upsertCachedSupplier(supplier: InsertCachedSupplier): Promise<CachedSupplier> {
+    const existing = this.cachedSuppliers.find(s => s.payeeId === supplier.payeeId);
+    
+    if (existing) {
+      Object.assign(existing, { ...supplier, lastUpdated: new Date() });
+      return existing;
+    } else {
+      const newSupplier: CachedSupplier = {
+        ...supplier,
+        id: this.nextId++,
+        normalizedName: supplier.normalizedName || null,
+        category: supplier.category || null,
+        mcc: supplier.mcc || null,
+        industry: supplier.industry || null,
+        paymentType: supplier.paymentType || null,
+        city: supplier.city || null,
+        state: supplier.state || null,
+        confidence: supplier.confidence || null,
+        metadata: supplier.metadata || null,
+        lastUpdated: new Date()
+      };
+      this.cachedSuppliers.push(newSupplier);
+      return newSupplier;
+    }
+  }
+}
+
+// Export the appropriate storage based on environment
+export const storage: IStorage = process.env.USE_MEMORY_STORAGE === 'true' 
+  ? new MemStorage() 
+  : new DatabaseStorage();

@@ -1,0 +1,160 @@
+Got it. Here’s a clean, copy-paste prompt for Replit’s LLM that keeps your **existing UX and styling**, strips everything else, and leaves **Finexio Match only** with single and batch flows plus Jobs CRUD. It also forces visual-regression checks so it won’t “re-skin” the app.
+
+---
+
+# PROMPT FOR REPLIT LLM — **RETAIN EXISTING UX, FINEXIO MATCH ONLY, KEEP JOBS**
+
+You are a senior refactoring engineer. The app already works. Your task is to **retain the current UX and styling exactly as they are** and pare the scope down to **Finexio Match only**. Delete all other features. Keep single and batch matching plus Jobs CRUD. Work in small steps. After each change, run the QA loop and fix failures before proceeding.
+
+Important: if you find the misspelling “Phynexio”, normalize it to **Finexio** in code and copy. Do not change brand assets unless they are actually misspelled.
+
+## Keep this and only this
+
+1. **Finexio Match**
+
+   * Single record: existing input(s) for payee name. Show decision, confidence, reasons, and top candidates in the same components.
+   * Batch: existing upload flow for CSV or JSON with the same column-mapper modal, the same progress pattern, and the same results table and export.
+
+2. **Jobs for batch runs**
+
+   * Create from upload, list with pagination, update notes/labels, re-run, delete, download results.
+   * Keep the same table layout, columns, actions, toasts, and detail page.
+
+3. **APIs that power the above**
+
+   * Keep existing paths if they already exist. If not, use these:
+
+     ```
+     GET  /health
+     POST /v1/payees/ingest            # seed/refresh Finexio network
+     POST /v1/match                    # single Finexio match
+     POST /v1/match/batch              # batch Finexio match
+     GET  /v1/jobs                     # list jobs
+     POST /v1/jobs                     # create job
+     GET  /v1/jobs/{id}                # job detail
+     PATCH /v1/jobs/{id}               # update notes/labels or re-run flag
+     DELETE /v1/jobs/{id}
+     GET  /v1/jobs/{id}/download       # CSV results
+     ```
+
+4. **Design system and styling**
+
+   * Keep the exact layout, navigation, components, Tailwind config, CSS variables, tokens, fonts, icons, spacing, and transitions.
+
+## Remove or hide everything else
+
+* Mastercard match code and routes
+* Address validators and any other classifiers
+* Payments, treasury, OFAC/KYC/AML, partner webhooks, schedulers, mailers, unrelated analytics
+* Extra settings or pages not used by Finexio Match or Jobs
+* Env vars, DI bindings, middleware, and packages that only support removed features
+
+If removing a module breaks imports, create a small stub to keep the UI running, then delete the stub once tests are green.
+
+## Non-destructive “retain UX” plan
+
+1. **Freeze visuals first**
+
+   * Capture Playwright screenshots for these pages at 1440×900 and 390×844:
+
+     * Finexio Match Single
+     * Finexio Match Batch
+     * Jobs List
+     * Job Detail
+     * Dashboard or Landing (if present)
+   * Save to `qa_reports/baseline/`.
+
+2. **Add visual regression tests**
+
+   * Re-screenshot after each change and compare with a pixel threshold ≤ 1.5%.
+   * Fail if diffs exceed the threshold outside the sections you intentionally removed.
+
+3. **Lock the design system**
+
+   * Add tests that assert Tailwind config, CSS variables, and design tokens are unchanged.
+   * Snapshot the compiled CSS size. Fail if it changes by more than 10% unless you update the snapshot with a note.
+
+4. **DOM contract tests**
+
+   * Verify the same data-attributes or test IDs exist for primary buttons, tables, tabs, modals, and forms on all kept pages.
+
+5. **Navigation invariants**
+
+   * Keep the same side nav groups and order. Hide removed items with a feature flag so the layout and spacing remain stable. Remove a group only if it would be empty.
+
+6. **Keep component reuse**
+
+   * Reuse existing button, table, form, modal, toast components. No new visual variants.
+
+## Continuous QA after every change
+
+Run this loop after each file edit:
+
+**Fast set**: lint, typecheck, unit tests, UI smoke, visual diff.
+If fast is green, run the **Full set**: integration, e2e/API, security scan, perf spot-check.
+
+**Gates**:
+
+* All tests pass
+* Visual diffs within 1.5% per page
+* Coverage ≥ 90% overall and ≥ 95% for Finexio Match handlers and Jobs controller
+* No high-severity security findings
+* No perf regression > 20% for page load or API p95
+
+**Artifacts**:
+
+* `qa_reports/summary.md` with what changed and key metrics
+* `qa_reports/baseline/` and `qa_reports/diff/` images
+* Coverage HTML
+* `qa_reports/benchmarks.json` for perf baselines
+
+## Tests to add or update
+
+* **Visual regression** for the pages listed above
+* **DOM contract tests** that assert key controls and table columns exist with the same IDs or data-attrs
+* **Route 404 tests** for removed endpoints (e.g., Mastercard routes return 404)
+* **Jobs CRUD e2e**: create from upload, list, update notes/labels, re-run, delete, download results
+* **Finexio Match flows**:
+
+  * Single: same rendering and decision fields as before
+  * Batch: same uploader, column mapper, progress bar, results table, and CSV export
+* **Privacy**: logs are scrubbed and do not include full raw inputs when scrubbing is enabled
+
+## Config to keep (trimmed)
+
+```
+OPENAI_API_KEY?                  # only if Finexio Match uses embeddings or reranker
+DATABASE_URL?                    # if Jobs or network are persisted
+LOG_LEVEL=INFO
+SCRUB_LOGS=true
+```
+
+Remove all Mastercard and other unused variables from `.env.example` and configuration code.
+
+## Safe removal sequence
+
+1. Generate a module and route map. Save to `qa_reports/scope_plan.md`.
+2. Add failing tests that import removed modules and expect ImportError.
+3. Delete Mastercard and other out-of-scope code in small commits. After each deletion, run the QA loop and repair any break.
+4. Prune dependencies and env vars. Regenerate the lockfile. Add a test that fails on banned packages.
+5. Confirm nav and pages still render with the same look and feel. Update visual baselines only when intended.
+
+## Acceptance checklist
+
+* [ ] UI looks and feels the same. Only scope changed.
+* [ ] Finexio Match single and batch work end-to-end.
+* [ ] Jobs CRUD works and uses the same table and detail views.
+* [ ] Removed routes return 404. Removed modules cannot be imported.
+* [ ] Visual diffs within threshold.
+* [ ] Coverage and security gates pass.
+* [ ] README and `.env.example` reflect the new scope.
+
+When you finish, output exactly:
+
+1. One paragraph on what was removed and what remains
+2. Key metrics: tests passed, coverage, visual diff counts, p95 page and API latency
+3. Paths to `qa_reports/summary.md` and `qa_reports/scope_plan.md`
+
+---
+
+Use this as the single source of truth. Keep the styling and layout. Keep Jobs. Focus the app on **Finexio Match only**.
