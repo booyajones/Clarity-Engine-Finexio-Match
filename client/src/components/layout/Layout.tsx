@@ -1,61 +1,72 @@
 import { useLocation } from "wouter";
-import Sidebar from "@/components/layout/sidebar";
-import Header from "@/components/layout/header";
-import React from "react";
-
-const headers: Record<string, { title: string; subtitle?: string }> = {
-  "/": {
-    title: "Dashboard",
-    subtitle: "Overview of classification activity",
-  },
-  "/upload": {
-    title: "Upload Data",
-    subtitle:
-      "Upload CSV or Excel files for high-accuracy OpenAI classification (95%+ confidence only)",
-  },
-  "/keywords": {
-    title: "Keyword Manager",
-    subtitle: "Manage exclusion keywords",
-  },
-  "/single": {
-    title: "Single Classification",
-    subtitle: "Classify a single payee",
-  },
-  "/classifications": {
-    title: "Classifications",
-    subtitle: "View and manage all payee classifications",
-  },
-  "/downloads": {
-    title: "Downloads",
-    subtitle: "Download completed classification results",
-  },
-  "/batch-jobs": {
-    title: "Batch Jobs",
-    subtitle: "Monitor processing jobs",
-  },
-};
+import { useState, useEffect } from "react";
+import ModernSidebar from "@/components/layout/modern-sidebar";
+import { Menu, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface LayoutProps {
   children: React.ReactNode;
 }
 
 export default function Layout({ children }: LayoutProps) {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [location] = useLocation();
-  const header = headers[location] || { title: "" };
+
+  // Close sidebar on route change (mobile)
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location]);
 
   return (
-    <div className="min-h-screen flex bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950 transition-colors duration-300">
-      {/* Sidebar */}
-      <div className="hidden md:flex">
-        <Sidebar />
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-purple-50">
+      {/* Modern Sidebar */}
+      <ModernSidebar 
+        isOpen={sidebarOpen} 
+        onClose={() => setSidebarOpen(false)} 
+      />
+
+      {/* Main Content Area */}
+      <div className={cn(
+        "transition-all duration-300 ease-in-out",
+        "lg:ml-72" // Sidebar width on desktop
+      )}>
+        {/* Mobile Header */}
+        <div className="lg:hidden sticky top-0 z-40 bg-white/80 backdrop-blur-lg border-b border-gray-100">
+          <div className="flex items-center justify-between p-4">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+            <div className="text-lg font-semibold gradient-text">
+              Clarity Engine
+            </div>
+          </div>
+        </div>
+
+        {/* Page Content */}
+        <div className="animate-fade-in">
+          {children}
+        </div>
       </div>
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col">
-        <Header title={header.title} subtitle={header.subtitle} />
-        <main className="flex-1 p-6 overflow-auto">{children}</main>
-      </div>
+      {/* Mobile Overlay */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <style>{`
+        .gradient-text {
+          background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+      `}</style>
     </div>
   );
 }
-
