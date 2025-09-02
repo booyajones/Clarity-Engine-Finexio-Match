@@ -79,11 +79,11 @@ app.use((req, res, next) => {
       res.status(status).json({ message });
     });
 
+    // Setup frontend serving BEFORE routes
+    setupFrontend(app);
+    
     // Register routes and start server
     const server = await registerRoutes(app);
-    
-    // Setup frontend serving
-    setupFrontend(app);
 
     console.log('✅ Finexio Match server ready');
   } catch (error) {

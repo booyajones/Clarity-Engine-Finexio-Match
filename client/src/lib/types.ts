@@ -1,8 +1,19 @@
 export interface ClassificationStats {
-  totalPayees: number;
-  accuracy: number;
-  pendingReview: number;
-  filesProcessed: number;
+  totalBatches: number;
+  completedBatches: number;
+  processingBatches: number;
+  totalRecords: number;
+  processedRecords: number;
+  matchedRecords: number;
+  matchRate: number;
+  recentBatches: Array<{
+    id: number;
+    name: string;
+    status: string;
+    totalRecords: number;
+    processedRecords: number;
+    createdAt: string;
+  }>;
 }
 
 export interface UploadBatch {

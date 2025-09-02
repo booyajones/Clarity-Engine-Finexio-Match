@@ -8,37 +8,37 @@ interface KpiCardsProps {
 export default function KpiCards({ stats }: KpiCardsProps) {
   const cards = [
     {
-      title: "Total Payees",
-      value: stats.totalPayees.toLocaleString(),
-      change: "+12% from last month",
-      icon: "fas fa-users",
+      title: "Total Records",
+      value: (stats.totalRecords || 0).toLocaleString(),
+      change: `${stats.totalBatches || 0} batches`,
+      icon: "fas fa-database",
       bgColor: "bg-primary-100",
       iconColor: "text-primary-600",
-      changeColor: "text-success-600"
+      changeColor: "text-gray-600"
     },
     {
-      title: "AI Accuracy",
-      value: `${stats.accuracy.toFixed(1)}%`,
-      change: "+2.1% improvement",
+      title: "Match Rate",
+      value: `${stats.matchRate || 0}%`,
+      change: `${(stats.matchedRecords || 0).toLocaleString()} matched`,
       icon: "fas fa-bullseye",
       bgColor: "bg-success-100",
       iconColor: "text-success-600",
       changeColor: "text-success-600"
     },
     {
-      title: "Pending Review",
-      value: stats.pendingReview.toLocaleString(),
-      change: "Requires attention",
-      icon: "fas fa-exclamation-triangle",
+      title: "Processing",
+      value: (stats.processingBatches || 0).toLocaleString(),
+      change: stats.processingBatches > 0 ? "In progress" : "All complete",
+      icon: "fas fa-spinner",
       bgColor: "bg-warning-100",
       iconColor: "text-warning-600",
-      changeColor: "text-warning-600"
+      changeColor: stats.processingBatches > 0 ? "text-warning-600" : "text-success-600"
     },
     {
-      title: "Files Processed",
-      value: stats.filesProcessed.toLocaleString(),
-      change: "This month",
-      icon: "fas fa-file-alt",
+      title: "Completed",
+      value: (stats.completedBatches || 0).toLocaleString(),
+      change: `${((stats.completedBatches / Math.max(stats.totalBatches, 1)) * 100).toFixed(0)}% success rate`,
+      icon: "fas fa-check-circle",
       bgColor: "bg-gray-100",
       iconColor: "text-gray-600",
       changeColor: "text-gray-500"

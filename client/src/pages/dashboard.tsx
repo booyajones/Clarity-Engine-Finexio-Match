@@ -5,7 +5,7 @@ import BusinessInsights from "@/components/dashboard/business-insights";
 import ReviewQueue from "@/components/dashboard/review-queue";
 import { useQuery } from "@tanstack/react-query";
 import type { ClassificationStats, BusinessCategory, ActivityItem } from "@/lib/types";
-import Header from "@/components/layout/Header"; // Added missing import
+import Header from "@/components/layout/header";
 
 export default function Dashboard() {
   const { data: stats, isLoading } = useQuery<ClassificationStats>({

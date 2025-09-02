@@ -451,6 +451,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(classifications);
   }));
 
+  // Get pending review classifications
+  app.get("/api/classifications/pending-review", asyncHandler(async (req: Request, res: Response) => {
+    const limit = safeParseIntOptional(req.query.limit as string, 20);
+    
+    // For now, return empty array as we don't have pending review functionality yet
+    const pendingClassifications: any[] = [];
+    
+    res.json(pendingClassifications);
+  }));
+
+  // Update classification
+  app.patch("/api/classifications/:id", asyncHandler(async (req: Request, res: Response) => {
+    const classificationId = safeParseInt(req.params.id, "classification ID");
+    const updates = req.body;
+    
+    // Update the classification in the database
+    await db.update(payeeClassifications)
+      .set({
+        ...updates,
+        updatedAt: new Date()
+      })
+      .where(eq(payeeClassifications.id, classificationId));
+    
+    res.json({ success: true, message: "Classification updated" });
+  }));
+
+  // Log client errors for debugging
+  app.post("/api/log-client-error", asyncHandler(async (req: Request, res: Response) => {
+    const { error, errorInfo, url } = req.body;
+    console.error("Client error:", { error, errorInfo, url });
+    res.json({ success: true });
+  }));
+
   // Dashboard stats endpoint
   app.get("/api/dashboard/stats", asyncHandler(async (req: Request, res: Response) => {
     const userId = 1; // TODO: Get from auth
