@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import type { PayeeClassification, UploadBatch } from "@/lib/types";
+import { Download, Search, Edit } from "lucide-react";
 
 export default function Classifications() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -68,7 +69,7 @@ export default function Classifications() {
         subtitle="View and manage all payee classifications"
       >
         <Button className="bg-primary-500 hover:bg-primary-600 text-white">
-          <i className="fas fa-download mr-2"></i>
+          <Download className="w-4 h-4 mr-2" />
           Export All
         </Button>
       </Header>
@@ -120,11 +121,11 @@ export default function Classifications() {
             {/* Classifications Table */}
             {filteredClassifications.length === 0 ? (
               <div className="text-center py-12">
-                <i className="fas fa-search text-4xl text-gray-300 mb-4"></i>
+                <Search className="w-10 h-10 text-gray-300 mb-4" />
                 <p className="text-gray-500">No classifications found</p>
                 {searchTerm && (
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={() => setSearchTerm("")}
                     className="mt-2"
                   >
@@ -228,7 +229,7 @@ export default function Classifications() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <Button variant="outline" size="sm">
-                            <i className="fas fa-edit mr-1"></i>
+                            <Edit className="w-4 h-4 mr-1" />
                             Edit
                           </Button>
                         </td>
