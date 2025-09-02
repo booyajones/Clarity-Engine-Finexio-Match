@@ -14,18 +14,29 @@ export default function Classifications() {
   const [selectedBatch, setSelectedBatch] = useState<string>("all");
   const [selectedType, setSelectedType] = useState<string>("all");
 
-  const { data: batches = [] } = useQuery<UploadBatch[]>({
+  const {
+    data: batches = [],
+    refetch: refetchBatches,
+  } = useQuery<UploadBatch[]>({
     queryKey: ["/api/upload/batches"],
-    // Poll every 2 seconds for real-time updates
-    refetchInterval: 2000,
+    refetchOnWindowFocus: true,
   });
 
-  const { data: classifications = [] } = useQuery<PayeeClassification[]>({
-    queryKey: selectedBatch === "all" 
-      ? ["/api/classifications"] 
+  const {
+    data: classifications = [],
+    refetch: refetchClassifications,
+  } = useQuery<PayeeClassification[]>({
+    queryKey: selectedBatch === "all"
+      ? ["/api/classifications"]
       : ["/api/classifications/batch", selectedBatch],
     enabled: selectedBatch !== "all" || batches.length > 0,
+    refetchOnWindowFocus: true,
   });
+
+  const handleRefresh = () => {
+    refetchBatches();
+    refetchClassifications();
+  };
 
   const filteredClassifications = classifications.filter(classification => {
     const matchesSearch = classification.cleanedName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -64,10 +75,14 @@ export default function Classifications() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <Header 
-        title="Classifications" 
+      <Header
+        title="Classifications"
         subtitle="View and manage all payee classifications"
       >
+        <Button variant="outline" onClick={handleRefresh}>
+          <i className="fas fa-sync-alt mr-2"></i>
+          Refresh
+        </Button>
         <Button className="bg-primary-500 hover:bg-primary-600 text-white">
           <Download className="w-4 h-4 mr-2" />
           Export All
