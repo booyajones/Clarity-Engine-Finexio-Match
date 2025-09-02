@@ -50,7 +50,7 @@ app.use((req, res, next) => {
       setInterval(() => {
         try {
           const beforeGC = process.memoryUsage();
-          global.gc();
+          global.gc?.();
           const afterGC = process.memoryUsage();
           const freed = beforeGC.heapUsed - afterGC.heapUsed;
           if (freed > 5 * 1024 * 1024) { // Only log if we freed > 5MB

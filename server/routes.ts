@@ -1,4 +1,4 @@
-import type { Express, Request, Response, NextFunction } from "express";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
@@ -7,7 +7,6 @@ import XLSX from "xlsx";
 import { streamingProcessor } from "./services/streamingProcessor";
 import fs from "fs";
 import path from "path";
-import { z } from "zod";
 import helmet from "helmet";
 import compression from "compression";
 import morgan from "morgan";
@@ -15,9 +14,9 @@ import healthRoutes from "./routes/health";
 import batchJobRoutes from "./routes/batch-jobs";
 import { AppError, errorHandler, notFoundHandler, asyncHandler } from "./middleware/errorHandler";
 import { generalLimiter, uploadLimiter } from "./middleware/rateLimiter";
-import { db, pool } from "./db";
+import { db } from "./db";
 import { payeeClassifications, uploadBatches } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { finexioMatcherV3 } from "./services/finexioMatcherV3";
 import { LRUCache } from 'lru-cache';
 
