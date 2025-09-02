@@ -1053,7 +1053,11 @@ export function ClassificationViewer({ batchId, onBack }: ClassificationViewerPr
               
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" size="icon">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Adjust matching settings"
+                  >
                     <Settings className="h-4 w-4" />
                   </Button>
                 </PopoverTrigger>
@@ -1332,6 +1336,7 @@ export function ClassificationViewer({ batchId, onBack }: ClassificationViewerPr
                             <Button
                               size="sm"
                               variant="ghost"
+                              aria-label="View classification details"
                               onClick={() => {
                                 setSelectedClassification(classification);
                                 fetchPayeeMatches(classification.id);
@@ -1361,6 +1366,7 @@ export function ClassificationViewer({ batchId, onBack }: ClassificationViewerPr
                                       <Button
                                         size="sm"
                                         variant="ghost"
+                                        aria-label="Copy original name"
                                         onClick={() => copyToClipboard(selectedClassification.originalName)}
                                       >
                                         <Copy className="h-3 w-3" />
@@ -1374,6 +1380,7 @@ export function ClassificationViewer({ batchId, onBack }: ClassificationViewerPr
                                       <Button
                                         size="sm"
                                         variant="ghost"
+                                        aria-label="Copy cleaned name"
                                         onClick={() => copyToClipboard(selectedClassification.cleanedName)}
                                       >
                                         <Copy className="h-3 w-3" />
@@ -1953,6 +1960,7 @@ export function ClassificationViewer({ batchId, onBack }: ClassificationViewerPr
                     <Button
                       variant="outline"
                       size="sm"
+                      aria-label="Previous page"
                       onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                       disabled={currentPage === 1}
                     >
@@ -1993,6 +2001,7 @@ export function ClassificationViewer({ batchId, onBack }: ClassificationViewerPr
                     <Button
                       variant="outline"
                       size="sm"
+                      aria-label="Next page"
                       onClick={() => setCurrentPage(Math.min(data.pagination?.totalPages || 1, currentPage + 1))}
                       disabled={currentPage === data.pagination?.totalPages}
                     >

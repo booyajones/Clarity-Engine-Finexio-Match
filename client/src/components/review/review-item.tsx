@@ -150,6 +150,7 @@ export default function ReviewItem({
           <Button
             size="sm"
             variant="ghost"
+            aria-label="Approve classification"
             onClick={() => handleQuickAction("approve")}
             disabled={updateMutation.isPending}
             className="text-success-600 hover:text-success-700 hover:bg-success-50"
@@ -159,6 +160,7 @@ export default function ReviewItem({
           <Button
             size="sm"
             variant="ghost"
+            aria-label="Reject classification"
             onClick={() => handleQuickAction("reject")}
             disabled={updateMutation.isPending}
             className="text-error-600 hover:text-error-700 hover:bg-error-50"
@@ -168,6 +170,7 @@ export default function ReviewItem({
           <Button
             size="sm"
             variant="ghost"
+            aria-label="Edit classification"
             onClick={() => handleQuickAction("edit")}
             disabled={updateMutation.isPending}
             className="text-gray-600 hover:text-gray-700 hover:bg-gray-50"

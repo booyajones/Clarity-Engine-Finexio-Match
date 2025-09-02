@@ -443,6 +443,7 @@ export function KeywordManager({ onBack }: KeywordManagerProps = {}) {
                               <Button
                                 variant="outline"
                                 size="sm"
+                                aria-label="Edit keyword"
                                 onClick={() => setEditingKeyword({ ...keyword })}
                               >
                                 <Edit className="h-4 w-4" />
@@ -512,7 +513,11 @@ export function KeywordManager({ onBack }: KeywordManagerProps = {}) {
 
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button variant="outline" size="sm">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                aria-label="Delete keyword"
+                              >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </AlertDialogTrigger>

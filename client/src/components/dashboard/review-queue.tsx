@@ -127,21 +127,26 @@ export default function ReviewQueue() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                      <button 
+                      <button
+                        aria-label="Approve classification"
                         onClick={() => handleApprove(item)}
                         className="text-success-600 hover:text-success-900"
                         disabled={updateClassificationMutation.isPending}
                       >
                         <i className="fas fa-check"></i>
                       </button>
-                      <button 
+                      <button
+                        aria-label="Reject classification"
                         onClick={() => handleReject(item)}
                         className="text-error-600 hover:text-error-900"
                         disabled={updateClassificationMutation.isPending}
                       >
                         <i className="fas fa-times"></i>
                       </button>
-                      <button className="text-gray-600 hover:text-gray-900">
+                      <button
+                        aria-label="Edit classification"
+                        className="text-gray-600 hover:text-gray-900"
+                      >
                         <i className="fas fa-edit"></i>
                       </button>
                     </td>
